@@ -1,0 +1,29 @@
+# ─── PatriMon — Docker Compose ───
+# Lancement : docker compose up -d --build
+
+services:
+  patrimon:
+    build: .
+    container_name: patrimon
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persister la base SQLite entre les redémarrages
+      - patrimon-data:/data
+    environment:
+      - PATRIMON_DB_PATH=/data/patrimoines.db
+      - PATRIMON_HOST=0.0.0.0
+      - PATRIMON_PORT=8000
+      - PATRIMON_CORS_ORIGINS=*
+      - PATRIMON_CACHE_TTL=60
+      - PATRIMON_CURRENCY_CACHE_TTL=600
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  patrimon-data:
+    driver: local

@@ -1,0 +1,1 @@
+"""Backend Suivi de Patrimoine"""
