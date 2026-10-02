@@ -1,10 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip, 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, 
-  BarChart, Bar
+  BarChart, Bar, LineChart, Line, Legend
 } from 'recharts';
-import { TrendingUp, Layers, PieChart as PieIcon, BarChart3, Activity, Clock } from 'lucide-react';
+import { 
+  TrendingUp, Layers, PieChart as PieIcon, BarChart3, 
+  Activity, Clock, Compass, ArrowUpRight, ArrowDownRight, Award
+} from 'lucide-react';
+import { api } from '../services/api';
 
 const COLORS = [
   '#0066FF', // BoursoBank Bleu
@@ -18,11 +22,38 @@ const COLORS = [
 export default function AllocationsCharts({ summary }) {
   const [chartMode, setChartMode] = useState('evolution');
 
+  // État du comparateur Benchmark
+  const [selectedBenchmark, setSelectedBenchmark] = useState('CW8.PA');
+  const [benchmarkPeriod, setBenchmarkPeriod] = useState('1mo');
+  const [benchmarkData, setBenchmarkData] = useState(null);
+  const [isBenchmarkLoading, setIsBenchmarkLoading] = useState(false);
+
   const allocationInst = summary?.allocation_institution || [];
   const allocationAsset = summary?.allocation_asset_class || [];
   const history = summary?.history || [];
   const perfAssets = summary?.performance_by_asset || [];
   const totalVal = summary?.total_net_worth || 1;
+
+  // Chargement des données benchmark
+  useEffect(() => {
+    if (chartMode !== 'benchmark') return;
+
+    let isMounted = true;
+    const fetchBenchmark = async () => {
+      try {
+        setIsBenchmarkLoading(true);
+        const data = await api.getBenchmarkComparison(selectedBenchmark, benchmarkPeriod);
+        if (isMounted) setBenchmarkData(data);
+      } catch (err) {
+        console.error("Erreur chargement benchmark :", err);
+      } finally {
+        if (isMounted) setIsBenchmarkLoading(false);
+      }
+    };
+
+    fetchBenchmark();
+    return () => { isMounted = false; };
+  }, [chartMode, selectedBenchmark, benchmarkPeriod]);
 
   const formatEUR = (val) => {
     return new Intl.NumberFormat('fr-FR', {
@@ -66,7 +97,7 @@ export default function AllocationsCharts({ summary }) {
             Analyses & Graphiques
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Évolution temporelle, répartition par banque et performance de vos investissements
+            Évolution temporelle, comparaison avec les indices et performance de vos investissements
           </p>
         </div>
 
@@ -81,6 +112,18 @@ export default function AllocationsCharts({ summary }) {
           >
             <TrendingUp className="w-3.5 h-3.5" />
             <span>Courbe d'Évolution</span>
+          </button>
+
+          <button
+            onClick={() => setChartMode('benchmark')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${
+              chartMode === 'benchmark'
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Compass className="w-3.5 h-3.5" />
+            <span>vs Benchmarks</span>
           </button>
 
           <button
@@ -127,7 +170,6 @@ export default function AllocationsCharts({ summary }) {
       {chartMode === 'evolution' && (
         <div className="space-y-3">
           {history.length < 2 ? (
-            /* Message quand pas encore assez de données */
             <div className="flex flex-col items-center justify-center py-16 text-center space-y-3">
               <div className="p-3 rounded-2xl bg-blue-500/10 text-blue-400 border border-blue-500/20">
                 <Clock className="w-6 h-6" />
@@ -136,7 +178,6 @@ export default function AllocationsCharts({ summary }) {
               <p className="text-xs text-slate-400 max-w-sm">
                 La courbe d'évolution se construit automatiquement jour après jour.
                 Un snapshot est enregistré à chaque consultation du tableau de bord.
-                Revenez demain pour voir vos premiers points !
               </p>
               {history.length === 1 && (
                 <p className="text-xs text-blue-400 font-medium">
@@ -226,7 +267,166 @@ export default function AllocationsCharts({ summary }) {
         </div>
       )}
 
-      {/* ================= 2. REPARTITION PAR BANQUE ================= */}
+      {/* ================= 2. COMPARAISON AVEC LES INDICES (BENCHMARK) ================= */}
+      {chartMode === 'benchmark' && (
+        <div className="space-y-4">
+          {/* Contrôles du benchmark */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/70 p-3 rounded-2xl border border-slate-800">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-slate-400 font-medium">Indice de référence :</span>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {[
+                  { symbol: 'CW8.PA', label: 'MSCI World (CW8)' },
+                  { symbol: '^GSPC', label: 'S&P 500' },
+                  { symbol: '^FCHI', label: 'CAC 40' },
+                  { symbol: 'BTC-EUR', label: 'Bitcoin' },
+                ].map((item) => (
+                  <button
+                    key={item.symbol}
+                    onClick={() => setSelectedBenchmark(item.symbol)}
+                    className={`px-2.5 py-1 rounded-xl text-xs font-semibold transition-all ${
+                      selectedBenchmark === item.symbol
+                        ? 'bg-indigo-600 text-white shadow-md'
+                        : 'bg-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-slate-400 font-medium">Période :</span>
+              {['1mo', '3mo', '6mo', '1y'].map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setBenchmarkPeriod(p)}
+                  className={`px-2 py-0.5 rounded-lg text-xs font-semibold transition-all ${
+                    benchmarkPeriod === p
+                      ? 'bg-blue-600 text-white'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {p === '1mo' ? '1 Mois' : p === '3mo' ? '3 Mois' : p === '6mo' ? '6 Mois' : '1 An'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Cartes KPI de comparaison */}
+          {benchmarkData && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-3.5">
+                <span className="text-[11px] text-slate-400 font-medium block">Mon Portefeuille</span>
+                <span className={`text-xl font-extrabold ${benchmarkData.portfolio_total_return_pct >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {benchmarkData.portfolio_total_return_pct >= 0 ? `+${benchmarkData.portfolio_total_return_pct}%` : `${benchmarkData.portfolio_total_return_pct}%`}
+                </span>
+                <span className="text-[10px] text-slate-500 block mt-0.5">Sur la période sélectionnée</span>
+              </div>
+
+              <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-3.5">
+                <span className="text-[11px] text-slate-400 font-medium block">{benchmarkData.benchmark?.name || selectedBenchmark}</span>
+                <span className={`text-xl font-extrabold ${benchmarkData.benchmark_total_return_pct >= 0 ? 'text-cyan-400' : 'text-rose-400'}`}>
+                  {benchmarkData.benchmark_total_return_pct >= 0 ? `+${benchmarkData.benchmark_total_return_pct}%` : `${benchmarkData.benchmark_total_return_pct}%`}
+                </span>
+                <span className="text-[10px] text-slate-500 block mt-0.5">Performance du marché</span>
+              </div>
+
+              <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-3.5">
+                <span className="text-[11px] text-slate-400 font-medium block">Alpha (Surperformance)</span>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className={`text-xl font-extrabold ${benchmarkData.alpha_pct >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {benchmarkData.alpha_pct >= 0 ? `+${benchmarkData.alpha_pct}%` : `${benchmarkData.alpha_pct}%`}
+                  </span>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                    benchmarkData.outperforming ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
+                  }`}>
+                    {benchmarkData.outperforming ? 'Surperformance' : 'Sous-performance'}
+                  </span>
+                </div>
+                <span className="text-[10px] text-slate-500 block mt-0.5">Écart relatif vs l'indice</span>
+              </div>
+            </div>
+          )}
+
+          {/* Graphique multi-courbes en % */}
+          <div className="h-72 w-full pt-2">
+            {isBenchmarkLoading ? (
+              <div className="h-full flex items-center justify-center text-xs text-slate-400">
+                Chargement des cotations historiques de l'indice...
+              </div>
+            ) : benchmarkData?.series?.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={benchmarkData.series} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" vertical={false} />
+                  <XAxis dataKey="date" stroke="#64748B" fontSize={11} tickLine={false} />
+                  <YAxis 
+                    stroke="#64748B" 
+                    fontSize={11} 
+                    tickLine={false} 
+                    tickFormatter={(v) => `${v}%`}
+                  />
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const d = payload[0].payload;
+                        return (
+                          <div className="bg-slate-900/95 border border-slate-700 p-3 rounded-2xl shadow-2xl backdrop-blur-md text-xs space-y-1">
+                            <p className="text-slate-400 font-semibold">{d.full_date || d.date}</p>
+                            <p className="font-bold text-blue-400">
+                              Portefeuille : {d.portfolio_pct >= 0 ? `+${d.portfolio_pct}%` : `${d.portfolio_pct}%`}
+                            </p>
+                            <p className="font-bold text-cyan-400">
+                              {benchmarkData.benchmark?.name} : {d.benchmark_pct >= 0 ? `+${d.benchmark_pct}%` : `${d.benchmark_pct}%`} ({d.benchmark_price} €)
+                            </p>
+                            <p className={`font-semibold pt-1 border-t border-slate-800 ${d.alpha_pct >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                              Écart (Alpha) : {d.alpha_pct >= 0 ? `+${d.alpha_pct}%` : `${d.alpha_pct}%`}
+                            </p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Legend 
+                    verticalAlign="top" 
+                    height={36} 
+                    formatter={(value) => (
+                      <span className="text-xs text-slate-300 font-medium">
+                        {value === 'portfolio_pct' ? 'Mon Portefeuille (%)' : `${benchmarkData.benchmark?.name || 'Indice'} (%)`}
+                      </span>
+                    )} 
+                  />
+                  <Line 
+                    type="monotone" 
+                    dataKey="portfolio_pct" 
+                    name="portfolio_pct" 
+                    stroke="#3B82F6" 
+                    strokeWidth={3} 
+                    dot={false} 
+                  />
+                  <Line 
+                    type="monotone" 
+                    dataKey="benchmark_pct" 
+                    name="benchmark_pct" 
+                    stroke="#06B6D4" 
+                    strokeWidth={2} 
+                    strokeDasharray="4 4" 
+                    dot={false} 
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-full flex items-center justify-center text-xs text-slate-400">
+                Données d'indice indisponibles pour le moment.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ================= 3. REPARTITION PAR BANQUE ================= */}
       {chartMode === 'institution' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
           <div className="h-64 relative">
@@ -280,7 +480,7 @@ export default function AllocationsCharts({ summary }) {
         </div>
       )}
 
-      {/* ================= 3. CLASSES D'ACTIFS ================= */}
+      {/* ================= 4. CLASSES D'ACTIFS ================= */}
       {chartMode === 'assets' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
           <div className="h-64 relative">
@@ -334,7 +534,7 @@ export default function AllocationsCharts({ summary }) {
         </div>
       )}
 
-      {/* ================= 4. PALMARES DES PERFORMANCES ================= */}
+      {/* ================= 5. PALMARES DES PERFORMANCES ================= */}
       {chartMode === 'performance' && perfAssets.length > 0 && (
         <div className="space-y-4">
           <p className="text-xs text-slate-400">

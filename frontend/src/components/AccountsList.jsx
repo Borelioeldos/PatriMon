@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { 
   ChevronDown, ChevronUp, Plus, Trash2, Edit2, Check, X, 
-  TrendingUp, TrendingDown, PiggyBank, Landmark, ShieldCheck, Wallet, ArrowUpRight
+  TrendingUp, TrendingDown, PiggyBank, Landmark, ShieldCheck, Wallet, ArrowUpRight,
+  Building2, Zap
 } from 'lucide-react';
 
 export default function AccountsList({ 
@@ -9,7 +10,9 @@ export default function AccountsList({
   onDeleteAccount, 
   onUpdateAccount, 
   onDeleteHolding, 
-  onOpenAddAssetForAccount 
+  onOpenAddAssetForAccount,
+  onOpenPeeImport,
+  onOpenBankSync
 }) {
   const [expandedAccounts, setExpandedAccounts] = useState({});
   const [editingCashId, setEditingCashId] = useState(null);
@@ -60,6 +63,8 @@ export default function AccountsList({
         return { label: 'Crypto Actifs', icon: ArrowUpRight, color: 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30' };
       case 'pee': 
         return { label: 'PEE Entreprise', icon: ShieldCheck, color: 'bg-amber-500/15 text-amber-400 border-amber-500/30' };
+      case 'pero': 
+        return { label: 'PERO Retraite', icon: ShieldCheck, color: 'bg-teal-500/15 text-teal-400 border-teal-500/30' };
       default: 
         return { label: 'Compte Courant', icon: Wallet, color: 'bg-slate-700 text-slate-300 border-slate-600' };
     }
@@ -67,7 +72,7 @@ export default function AccountsList({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
             <Wallet className="w-5 h-5 text-blue-400" />
@@ -76,6 +81,30 @@ export default function AccountsList({
           <p className="text-xs text-slate-400">
             BoursoBank, Revolut, BNP Paribas et PEE • Cliquez sur un compte pour afficher ses lignes
           </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {onOpenBankSync && (
+            <button
+              onClick={onOpenBankSync}
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition-all flex items-center gap-1.5"
+              title="Synchroniser vos comptes bancaires via DSP2"
+            >
+              <Landmark className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Synchro Banques</span>
+            </button>
+          )}
+
+          {onOpenPeeImport && (
+            <button
+              onClick={onOpenPeeImport}
+              className="px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 border border-amber-500/30 text-xs font-semibold transition-all flex items-center gap-1.5"
+              title="Importer un relevé PDF/CSV BNP Épargne Entreprise (PEE / PERO)"
+            >
+              <Building2 className="w-3.5 h-3.5 text-amber-400" />
+              <span>Importer Relevé BNP</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -198,6 +227,36 @@ export default function AccountsList({
                   </div>
 
                   <div className="flex items-center gap-1.5">
+                    {/* Bouton spécifique Import PEE / PERO */}
+                    {(accType === 'pee' || accType === 'pero' || (acc.name || '').toLowerCase().includes('pee') || (acc.name || '').toLowerCase().includes('cardif')) && onOpenPeeImport && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenPeeImport();
+                        }}
+                        className="px-2.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 border border-amber-500/30 text-xs font-semibold transition-all flex items-center gap-1"
+                        title="Importer un relevé de situation BNP Épargne Entreprise (PDF/CSV)"
+                      >
+                        <Building2 className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Relevé BNP</span>
+                      </button>
+                    )}
+
+                    {/* Bouton spécifique Synchro DSP2 */}
+                    {(accType === 'savings' || (acc.institution || '').toLowerCase().includes('bourso') || (acc.institution || '').toLowerCase().includes('bnp') || (acc.institution || '').toLowerCase().includes('revolut')) && onOpenBankSync && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenBankSync();
+                        }}
+                        className="px-2.5 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/20 text-xs font-semibold transition-all flex items-center gap-1"
+                        title="Synchroniser ce compte via Open Banking DSP2"
+                      >
+                        <Landmark className="w-3.5 h-3.5" />
+                        <span className="hidden md:inline">Synchro DSP2</span>
+                      </button>
+                    )}
+
                     <button
                       onClick={(e) => {
                         e.stopPropagation();

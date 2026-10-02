@@ -6,6 +6,8 @@
 - **BNP Paribas** : Compte courant, Livret A, LDDS, Épargne de précaution
 - **BNP Épargne Entreprise (PEE)** : Fonds d'entreprise (FCPE), abondement
 
+> 📖 **Pour les développeurs & Agents IA** : Consultez [`PROJECT_STATUS.md`](PROJECT_STATUS.md) pour retrouver l'état d'avancement complet, l'architecture détaillée et la feuille de route sans avoir à réexplorer tout le contexte.
+
 ---
 
 ## 🚀 Démarrage Rapide
@@ -44,25 +46,48 @@ Le frontend écoute sur `0.0.0.0`, ce qui le rend accessible à tous les apparei
 
 ---
 
-## 🛠️ Fonctionnalités Déployées (Phase 1)
+## 🛠️ Fonctionnalités Déployées
 
+### Phase 1 : Cœur Temps Réel & Multi-Établissements
 1. **Cotations Boursières & Crypto en Temps Réel** :
    - Requêtes automatiques via Yahoo Finance (`yfinance`) pour les actions françaises/européennes (ex: `CW8.PA`, `AI.PA`), américaines (`AAPL`, `MSFT`), cryptomonnaies (`BTC-EUR`, `ETH-EUR`).
    - Conversion automatique des devises étrangères en Euros (ex: USD -> EUR).
    - Cache intelligent pour des temps de chargement instantanés.
-2. **Support Spécifique PEE** :
+2. **Support Spécifique PEE & Livrets d'Épargne** :
    - Mode manuel dédié aux fonds FCPE de BNP Épargne Entreprise avec actualisation facile du nombre de parts et de la valeur liquidative.
+   - Onglet rapide Livrets d'épargne (Livret A, LDDS, LEP) avec cours fixe garanti à 1,00 €.
 3. **Tableau de Bord Visuel Fintech** :
    - **KPIs clés** : Valeur nette totale, Plus/moins-value latente (€ et %), Liquidités de sécurité, Nombre d'enveloppes.
-   - **Graphiques interactifs** : Donut de répartition par banque, Donut par classe d'actif, Graphique de suivi historique.
+   - **Graphiques interactifs** : Donut de répartition par banque, Donut par classe d'actif, Graphique d'évolution temporelle, Palmarès des titres.
    - **Gestion des comptes & liquidités** : Édition directe du solde espèces d'un compte en un clic.
-   - **Moteur de recherche assisté** de tickers boursiers lors de l'ajout d'une position.
-4. **Base de Données Locale & Souveraine** :
-   - SQLite (`backend/patrimoines.db`), zéro fuite de données, exportable en 1 fichier.
+
+### Phase 2 : Transactions, Moteur PRU & Calculs Financiers Avancés
+4. **Journal des Transactions & Recalcul Automatique du PRU** :
+   - Enregistrement des opérations : **Achats**, **Ventes**, **Versements**, **Retraits**, **Dividendes perçus**.
+   - Calcul mathématique en temps réel du **PRU pondéré (Weighted Average Cost)** à chaque renforcement de position.
+   - Calcul des plus-values réalisées lors des cessions et ajustement synchronisé du solde espèces.
+5. **Métriques de Performance Financière Réelles (Standards GIPS)** :
+   - **TWR (Time-Weighted Return)** : Mesure la rentabilité pure des investissements indépendamment des flux d'argent injectés ou retirés.
+   - **MWR / TRI (Taux de Rendement Interne / XIRR)** : Rendement effectif de l'investisseur tenant compte de la date exacte de chaque apport de capital.
+   - Suivi consolidé des **dividendes encaissés** et des **gains matérialisés**.
+6. **Comparaison avec des Indices de Référence (Benchmarks)** :
+   - Comparateur dynamique multi-courbes en % avec les indices majeurs : **MSCI World** (`CW8.PA`), **S&P 500** (`^GSPC`), **CAC 40** (`^FCHI`), **Bitcoin** (`BTC-EUR`).
+   - Périodes ajustables (1 mois, 3 mois, 6 mois, 1 an) et calcul automatique de l'**Alpha** (surperformance relative).
+
+### Phase 3 : Automatisation des Flux Externes, DSP2 & BNP PEE/PERO
+7. **Synchronisation Bancaire Automatique (DSP2 — Enable Banking)** :
+   - Intégration de l'API européenne moderne **Enable Banking** (accessible gratuitement pour l'usage personnel) pour synchroniser en direct les liquidités (BoursoBank, BNP Paribas, Revolut, etc.).
+   - Authentification sécurisée par signature **JWT RS256** avec générateur de clés RSA (2048-bit) directement intégré dans l'interface en 1 clic.
+   - **Mode Démo / Simulation instantané** : permet de tester immédiatement la synchronisation des liquidités en 1 clic sans avoir à configurer de clés API.
+   - Chiffrement local et respect total de la vie privée (aucune donnée d'authentification bancaire stockée).
+8. **Import Automatique Relevé BNP Épargne Entreprise (PEE & PERO Cardif Retraite)** :
+   - Module d'import en **1 clic** par glisser-déposer de votre relevé de situation officiel PDF ou CSV (calibré spécifiquement sur Schneider Electric France / BNP Paribas Cardif Retraite).
+   - Détection intelligente et séparation propre entre le **PEE** (fonds 5 ans bloqués) et le **PERO Retraite** (plan d'épargne retraite obligatoire).
+   - Rétro-ingénierie automatique de la valeur liquidative (VL) unitaire et du Prix de Revient Unitaire (PRU) à partir des plus-values et des parts du relevé.
+   - Création automatique du compte d'épargne retraite `BNP Cardif - PERO Retraite` et mise à jour de l'ensemble des positions à l'euro près.
 
 ---
 
 ## 🎯 Prochaines Étapes de la Feuille de Route
-- **Phase 2** : Calculs TWR/MWR (taux de rendement pondéré dans le temps), historique d'opérations d'achats/ventes et dividendes.
-- **Phase 3** : Connecteurs Open Banking automatiques (API GoCardless gratuite) et import automatique des relevés BNP PEE.
-- **Phase 4 & Déploiement** : Conteneurisation Docker pour hébergement 24/7 sur votre vieux PC équipé de **Home Assistant OS**.
+- **Phase 4** : Pilotage stratégique (Allocation cible vs réelle, calculateur de rééquilibrage de portefeuille, simulateur d'intérêts composés long terme).
+- **Phase 5 & Déploiement** : Conteneurisation Docker pour hébergement 24/7 sur votre vieux PC équipé de **Home Assistant OS**.

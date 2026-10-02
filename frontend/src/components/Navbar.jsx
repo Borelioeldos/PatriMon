@@ -1,11 +1,14 @@
 import React from 'react';
-import { RefreshCw, PlusCircle, Wallet, TrendingUp, Radio } from 'lucide-react';
+import { RefreshCw, PlusCircle, Wallet, TrendingUp, Radio, ArrowLeftRight, Landmark, Building2 } from 'lucide-react';
 
 export default function Navbar({ 
   onRefresh, 
   isRefreshing, 
   onOpenAddAsset, 
   onOpenAddAccount, 
+  onOpenAddTransaction,
+  onOpenBankSync,
+  onOpenPeeImport,
   lastUpdated,
   autoRefresh,
   onToggleAutoRefresh,
@@ -72,6 +75,26 @@ export default function Navbar({
             <span className="hidden md:inline">{isRefreshing ? 'Actualisation...' : 'Actualiser'}</span>
           </button>
 
+          {/* Bouton Synchronisation Bancaire DSP2 */}
+          <button
+            onClick={onOpenBankSync}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700/80 text-xs sm:text-sm font-semibold transition-all active:scale-95"
+            title="Synchronisation bancaire automatique DSP2 (BoursoBank, BNP Paribas, Revolut...)"
+          >
+            <Landmark className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="hidden lg:inline">Banques DSP2</span>
+          </button>
+
+          {/* Bouton Import Relevé BNP PEE / PERO */}
+          <button
+            onClick={onOpenPeeImport}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700/80 text-xs sm:text-sm font-semibold transition-all active:scale-95"
+            title="Importer un relevé de situation officiel BNP Épargne Entreprise (PDF / CSV)"
+          >
+            <Building2 className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden lg:inline">Relevé PEE</span>
+          </button>
+
           {/* Bouton Nouveau Compte */}
           <button
             onClick={onOpenAddAccount}
@@ -82,13 +105,23 @@ export default function Navbar({
             <span className="hidden sm:inline">+ Compte</span>
           </button>
 
+          {/* Bouton Nouvelle Transaction / Opération */}
+          <button
+            onClick={onOpenAddTransaction}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700/80 text-xs sm:text-sm font-semibold transition-all active:scale-95"
+            title="Enregistrer un achat, une vente, un versement ou un dividende"
+          >
+            <ArrowLeftRight className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="hidden sm:inline">+ Opération</span>
+          </button>
+
           {/* Bouton Ajouter Actif / Livret */}
           <button
             onClick={onOpenAddAsset}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs sm:text-sm font-bold transition-all shadow-lg shadow-blue-600/30 active:scale-95 ring-1 ring-white/20"
           >
             <PlusCircle className="w-4 h-4" />
-            <span>+ Ajouter</span>
+            <span>+ Actif</span>
           </button>
         </div>
       </div>

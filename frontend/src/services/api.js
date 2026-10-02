@@ -102,4 +102,171 @@ export const api = {
     if (!res.ok) throw new Error("Erreur lors du rafraîchissement du cache");
     return res.json();
   },
+
+  // ─── Transactions & PRU ───
+  async getTransactions(params = {}) {
+    const query = new URLSearchParams();
+    if (params.accountId) query.set('account_id', params.accountId);
+    if (params.holdingId) query.set('holding_id', params.holdingId);
+    if (params.type) query.set('type', params.type);
+    if (params.limit) query.set('limit', params.limit);
+    if (params.offset) query.set('offset', params.offset);
+
+    const qs = query.toString();
+    const url = `${API_BASE}/transactions/${qs ? `?${qs}` : ''}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("Erreur lors de la récupération des transactions");
+    return res.json();
+  },
+
+  async createTransaction(txData) {
+    const res = await fetch(`${API_BASE}/transactions/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(txData),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Erreur lors de la création de la transaction");
+    }
+    return res.json();
+  },
+
+  async deleteTransaction(txId) {
+    const res = await fetch(`${API_BASE}/transactions/${txId}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) throw new Error("Erreur lors de la suppression de la transaction");
+    return res.json();
+  },
+
+  async getTransactionStats() {
+    const res = await fetch(`${API_BASE}/transactions/stats`);
+    if (!res.ok) throw new Error("Erreur lors de la récupération des statistiques de transactions");
+    return res.json();
+  },
+
+  async recalculateHolding(holdingId) {
+    const res = await fetch(`${API_BASE}/transactions/recalculate-holding/${holdingId}`, {
+      method: 'POST',
+    });
+    if (!res.ok) throw new Error("Erreur lors du recalcul de la position");
+    return res.json();
+  },
+
+  // ─── Benchmarks ───
+  async getBenchmarks() {
+    const res = await fetch(`${API_BASE}/portfolio/benchmarks`);
+    if (!res.ok) return [];
+    return res.json();
+  },
+
+  async getBenchmarkComparison(benchmark = 'CW8.PA', period = '1mo') {
+    const res = await fetch(`${API_BASE}/portfolio/benchmark-comparison?benchmark=${encodeURIComponent(benchmark)}&period=${encodeURIComponent(period)}`);
+    if (!res.ok) throw new Error("Erreur lors de la comparaison avec l'indice de référence");
+    return res.json();
+  },
+
+  // ─── Épargne Entreprise (BNP PEE & PERO) ───
+  async previewPeeStatement(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch(`${API_BASE}/pee/preview-statement`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Erreur lors de l'analyse du relevé");
+    }
+    return res.json();
+  },
+
+  async confirmPeeImport(data) {
+    const res = await fetch(`${API_BASE}/pee/confirm-import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Erreur lors de la confirmation de l'import");
+    }
+    return res.json();
+  },
+
+  // ─── Open Banking (GoCardless DSP2) ───
+  async getOpenBankingStatus() {
+    const res = await fetch(`${API_BASE}/open-banking/status`);
+    if (!res.ok) throw new Error("Erreur lors de la récupération de l'état Open Banking");
+    return res.json();
+  },
+
+  async updateOpenBankingConfig(config) {
+    const res = await fetch(`${API_BASE}/open-banking/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+    if (!res.ok) throw new Error("Erreur mise à jour configuration");
+    return res.json();
+  },
+
+  async getOpenBankingInstitutions(country = 'FR') {
+    const res = await fetch(`${API_BASE}/open-banking/institutions?country=${country}`);
+    if (!res.ok) return [];
+    return res.json();
+  },
+
+  async connectBank(institutionId, redirectUri = window.location.origin) {
+    const res = await fetch(`${API_BASE}/open-banking/connect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ institution_id: institutionId, redirect_uri: redirectUri }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Erreur lors de la connexion bancaire");
+    }
+    return res.json();
+  },
+
+  async syncBankBalances() {
+    const res = await fetch(`${API_BASE}/open-banking/sync`, {
+      method: 'POST',
+    });
+    if (!res.ok) throw new Error("Erreur lors de la synchronisation des comptes bancaires");
+    return res.json();
+  },
+
+  async deleteBankConnection(connectionId) {
+    const res = await fetch(`${API_BASE}/open-banking/connection/${connectionId}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) throw new Error("Erreur lors de la suppression de la liaison bancaire");
+    return res.json();
+  },
+
+  async exchangeOpenBankingSession(code, state = null) {
+    const res = await fetch(`${API_BASE}/open-banking/session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, state }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Erreur validation session");
+    }
+    return res.json();
+  },
+
+  async generateOpenBankingKeyPair() {
+    const res = await fetch(`${API_BASE}/open-banking/generate-keys`, {
+      method: 'POST',
+    });
+    if (!res.ok) throw new Error("Erreur lors de la génération des clés RSA");
+    return res.json();
+  },
 };
+
+

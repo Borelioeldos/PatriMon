@@ -9,6 +9,7 @@ from sqlmodel import Session, select
 
 from app.models import Account, Holding, PortfolioSnapshot, AssetClass
 from app.services.market_service import market_service
+from app.services.performance_service import performance_service
 
 
 class PortfolioService:
@@ -252,6 +253,11 @@ class PortfolioService:
             reverse=True,
         )
 
+        # ── Métriques de performance financière avancées (TWR, MWR / TRI, stats) ──
+        perf_metrics = performance_service.get_full_performance_metrics(
+            session, total_net_worth, total_invested
+        )
+
         return {
             "total_net_worth": round(total_net_worth, 2),
             "total_invested": round(total_invested, 2),
@@ -263,6 +269,7 @@ class PortfolioService:
             "allocation_asset_class": allocation_asset_class,
             "history": history,
             "performance_by_asset": performance_by_asset,
+            "performance_metrics": perf_metrics,
             "updated_at": datetime.now(timezone.utc).strftime("%H:%M:%S"),
         }
 

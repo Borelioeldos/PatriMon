@@ -24,6 +24,7 @@ class AccountType(str, Enum):
     CTO = "cto"                  # Compte-Titres Ordinaire
     CRYPTO = "crypto"            # Portefeuille crypto
     PEE = "pee"                  # Plan d'Épargne Entreprise
+    PERO = "pero"                # Plan d'Épargne Retraite Obligatoire / Cardif
     REAL_ESTATE = "real_estate"  # Immobilier
     OTHER = "other"
 
@@ -47,6 +48,14 @@ class AssetClass(str, Enum):
     OTHER = "other"
 
 
+class TransactionType(str, Enum):
+    BUY = "buy"                  # Achat d'un actif
+    SELL = "sell"                # Vente d'un actif
+    DEPOSIT = "deposit"          # Dépôt / Versement d'espèces
+    WITHDRAWAL = "withdrawal"    # Retrait d'espèces
+    DIVIDEND = "dividend"        # Dividende perçu
+
+
 # ═══════════════════════════════ Account ═══════════════════════════════
 
 class AccountBase(SQLModel):
@@ -64,6 +73,10 @@ class Account(AccountBase, table=True):
     created_at: datetime = Field(default_factory=get_utc_now)
     updated_at: datetime = Field(default_factory=get_utc_now)
     holdings: List["Holding"] = Relationship(
+        back_populates="account",
+        cascade_delete=True,
+    )
+    transactions: List["Transaction"] = Relationship(
         back_populates="account",
         cascade_delete=True,
     )
@@ -111,6 +124,10 @@ class Holding(HoldingBase, table=True):
     last_price_updated_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=get_utc_now)
     account: Optional[Account] = Relationship(back_populates="holdings")
+    transactions: List["Transaction"] = Relationship(
+        back_populates="holding",
+        cascade_delete=True,
+    )
 
 
 class HoldingCreate(SQLModel):
@@ -148,6 +165,47 @@ class HoldingUpdate(SQLModel):
     notes: Optional[str] = None
 
 
+# ═══════════════════════════════ Transaction ═══════════════════════════════
+
+class TransactionBase(SQLModel):
+    account_id: int = Field(foreign_key="account.id")
+    holding_id: Optional[int] = Field(default=None, foreign_key="holding.id")
+    type: TransactionType = TransactionType.BUY
+    transaction_date: date = Field(default_factory=date.today)
+    symbol: Optional[str] = None          # Ex: CW8.PA, AAPL, BTC-EUR
+    name: Optional[str] = None            # Ex: Amundi MSCI World
+    quantity: Optional[float] = None      # Quantité d'unités (ex: 5.0)
+    unit_price: Optional[float] = None    # Prix unitaire en devise de cotation
+    unit_price_eur: Optional[float] = None# Prix unitaire en EUR
+    amount: float = 0.0                   # Montant total de l'opération
+    amount_eur: float = 0.0               # Montant total en EUR
+    fees: float = 0.0                     # Frais d'ordre / courtage
+    fees_eur: float = 0.0
+    currency: str = "EUR"
+    notes: Optional[str] = None
+
+
+class Transaction(TransactionBase, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    realized_gain_eur: Optional[float] = None   # Plus-value réalisée pour une vente
+    created_at: datetime = Field(default_factory=get_utc_now)
+    account: Optional[Account] = Relationship(back_populates="transactions")
+    holding: Optional[Holding] = Relationship(back_populates="transactions")
+
+
+class TransactionCreate(TransactionBase):
+    auto_update_holding: bool = True     # Si True, met à jour quantité et PRU du holding
+    auto_update_cash: bool = True        # Si True, ajuste le cash_balance du compte
+
+
+class TransactionRead(TransactionBase):
+    id: int
+    realized_gain_eur: Optional[float] = None
+    created_at: datetime
+    account_name: Optional[str] = None
+    account_institution: Optional[str] = None
+
+
 # ═══════════════════════════════ Snapshot ═══════════════════════════════
 
 class PortfolioSnapshot(SQLModel, table=True):
@@ -158,3 +216,32 @@ class PortfolioSnapshot(SQLModel, table=True):
     total_gain: float             # Plus-value latente totale (€)
     total_gain_percent: float     # Plus-value latente (%)
     created_at: datetime = Field(default_factory=get_utc_now)
+
+
+# ═══════════════════════════ Open Banking DSP2 ═══════════════════════════
+
+class BankConnection(SQLModel, table=True):
+    """Connexion bancaire GoCardless active auprès d'un établissement."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    institution_id: str                   # Ex: BOURSOBANK_FR, BNP_PARIBAS_FR, REVOLUT_FR
+    institution_name: str                 # Ex: BoursoBank, BNP Paribas, Revolut
+    requisition_id: str                   # ID de réquisition GoCardless (ou simulation)
+    status: str = "LINKED"                # PENDING, LINKED, EXPIRED
+    agreement_id: Optional[str] = None
+    account_ids: Optional[str] = None     # JSON array des account_ids
+    is_simulation: bool = False           # True si mode démo/simulation
+    last_synced_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=get_utc_now)
+
+
+class BankAccountMapping(SQLModel, table=True):
+    """Liaison entre un compte bancaire externe (GoCardless) et un compte PatriMon."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    connection_id: int = Field(foreign_key="bankconnection.id")
+    external_account_id: str              # ID de compte GoCardless (ex: acc_bourso_01)
+    patrimon_account_id: int = Field(foreign_key="account.id")
+    iban: Optional[str] = None
+    name: Optional[str] = None            # Ex: Compte Bancaire Principal
+    last_balance: Optional[float] = None
+    last_synced_at: Optional[datetime] = None
+

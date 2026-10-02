@@ -1,10 +1,15 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Navbar from './components/Navbar';
 import KPICards from './components/KPICards';
+import PerformanceMetrics from './components/PerformanceMetrics';
 import AllocationsCharts from './components/AllocationsCharts';
 import AccountsList from './components/AccountsList';
+import TransactionsList from './components/TransactionsList';
 import AddAssetModal from './components/AddAssetModal';
 import AddAccountModal from './components/AddAccountModal';
+import AddTransactionModal from './components/AddTransactionModal';
+import PeeImportModal from './components/PeeImportModal';
+import BankSyncModal from './components/BankSyncModal';
 import { api } from './services/api';
 import { Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
 
@@ -24,7 +29,14 @@ export default function App() {
   // Modals state
   const [isAddAssetOpen, setIsAddAssetOpen] = useState(false);
   const [isAddAccountOpen, setIsAddAccountOpen] = useState(false);
+  const [isAddTransactionOpen, setIsAddTransactionOpen] = useState(false);
+  const [isPeeImportOpen, setIsPeeImportOpen] = useState(false);
+  const [isBankSyncOpen, setIsBankSyncOpen] = useState(false);
   const [activeAccountForAsset, setActiveAccountForAsset] = useState(null);
+  const [activeAccountForTransaction, setActiveAccountForTransaction] = useState(null);
+
+  // Trigger pour recharger le journal des transactions
+  const [txRefreshTrigger, setTxRefreshTrigger] = useState(0);
 
   const fetchPortfolio = useCallback(async (forceRefresh = false) => {
     try {
@@ -79,11 +91,17 @@ export default function App() {
     setIsAddAssetOpen(true);
   };
 
+  const handleOpenAddTransaction = (account = null) => {
+    setActiveAccountForTransaction(account);
+    setIsAddTransactionOpen(true);
+  };
+
   const handleDeleteAccount = async (accountId) => {
     if (window.confirm("Êtes-vous sûr de vouloir supprimer ce compte et toutes ses positions associées ?")) {
       try {
         await api.deleteAccount(accountId);
         fetchPortfolio(false);
+        setTxRefreshTrigger(prev => prev + 1);
       } catch (err) {
         alert(err.message);
       }
@@ -104,6 +122,7 @@ export default function App() {
       try {
         await api.deleteHolding(holdingId);
         fetchPortfolio(false);
+        setTxRefreshTrigger(prev => prev + 1);
       } catch (err) {
         alert(err.message);
       }
@@ -115,10 +134,21 @@ export default function App() {
       setIsLoading(true);
       await api.seedInitialAccounts();
       fetchPortfolio(true);
+      setTxRefreshTrigger(prev => prev + 1);
     } catch (err) {
       alert(err.message);
       setIsLoading(false);
     }
+  };
+
+  const handleTransactionAdded = () => {
+    fetchPortfolio(true);
+    setTxRefreshTrigger(prev => prev + 1);
+  };
+
+  const handleTransactionDeleted = () => {
+    fetchPortfolio(true);
+    setTxRefreshTrigger(prev => prev + 1);
   };
 
   return (
@@ -128,6 +158,9 @@ export default function App() {
         isRefreshing={isRefreshing}
         onOpenAddAsset={() => handleOpenAddAsset(null)}
         onOpenAddAccount={() => setIsAddAccountOpen(true)}
+        onOpenAddTransaction={() => handleOpenAddTransaction(null)}
+        onOpenBankSync={() => setIsBankSyncOpen(true)}
+        onOpenPeeImport={() => setIsPeeImportOpen(true)}
         lastUpdated={lastUpdated}
         autoRefresh={autoRefresh}
         onToggleAutoRefresh={handleToggleAutoRefresh}
@@ -186,19 +219,32 @@ export default function App() {
               </div>
             ) : (
               <>
-                {/* 1. KPIs majeurs */}
+                {/* 1. KPIs majeurs du patrimoine */}
                 <KPICards summary={summary} />
 
-                {/* 2. Graphiques interactifs riches (Évolution, Banques, Classes d'actifs, Palmarès) */}
+                {/* 2. Métriques de performance financière avancées (Phase 2 : TWR, TRI / MWR, Dividendes, Plus-values réalisées) */}
+                <PerformanceMetrics summary={summary} />
+
+                {/* 3. Graphiques interactifs (Évolution temporelle, vs Benchmarks, Banques, Classes d'actifs, Palmarès) */}
                 <AllocationsCharts summary={summary} />
 
-                {/* 3. Liste détaillée des comptes & actifs */}
+                {/* 4. Liste détaillée des comptes & actifs */}
                 <AccountsList
                   accounts={summary.accounts}
                   onDeleteAccount={handleDeleteAccount}
                   onUpdateAccount={handleUpdateAccount}
                   onDeleteHolding={handleDeleteHolding}
                   onOpenAddAssetForAccount={handleOpenAddAsset}
+                  onOpenPeeImport={() => setIsPeeImportOpen(true)}
+                  onOpenBankSync={() => setIsBankSyncOpen(true)}
+                />
+
+                {/* 5. Journal des transactions & opérations financières (Phase 2) */}
+                <TransactionsList
+                  onOpenAddTransaction={() => handleOpenAddTransaction(null)}
+                  accounts={summary.accounts}
+                  refreshTrigger={txRefreshTrigger}
+                  onTransactionDeleted={handleTransactionDeleted}
                 />
               </>
             )}
@@ -219,6 +265,26 @@ export default function App() {
         isOpen={isAddAccountOpen}
         onClose={() => setIsAddAccountOpen(false)}
         onAccountAdded={() => fetchPortfolio(true)}
+      />
+
+      <AddTransactionModal
+        isOpen={isAddTransactionOpen}
+        onClose={() => setIsAddTransactionOpen(false)}
+        accounts={summary?.accounts || []}
+        initialAccount={activeAccountForTransaction}
+        onTransactionAdded={handleTransactionAdded}
+      />
+
+      <PeeImportModal
+        isOpen={isPeeImportOpen}
+        onClose={() => setIsPeeImportOpen(false)}
+        onImportSuccess={() => fetchPortfolio(true)}
+      />
+
+      <BankSyncModal
+        isOpen={isBankSyncOpen}
+        onClose={() => setIsBankSyncOpen(false)}
+        onSyncSuccess={() => fetchPortfolio(true)}
       />
 
       <footer className="border-t border-slate-800/60 py-6 text-center text-xs text-slate-400">

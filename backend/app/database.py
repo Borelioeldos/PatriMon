@@ -14,7 +14,10 @@ def init_db():
     
     Les modèles doivent être importés pour que SQLModel.metadata les connaisse.
     """
-    from app.models import Account, Holding, PortfolioSnapshot  # noqa: F401
+    from app.models import (  # noqa: F401
+        Account, Holding, PortfolioSnapshot, Transaction,
+        BankConnection, BankAccountMapping
+    )
     SQLModel.metadata.create_all(engine)
 
 
