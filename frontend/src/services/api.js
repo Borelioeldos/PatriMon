@@ -109,6 +109,7 @@ export const api = {
     if (params.accountId) query.set('account_id', params.accountId);
     if (params.holdingId) query.set('holding_id', params.holdingId);
     if (params.type) query.set('type', params.type);
+    if (params.category) query.set('category', params.category);
     if (params.limit) query.set('limit', params.limit);
     if (params.offset) query.set('offset', params.offset);
 
@@ -260,11 +261,67 @@ export const api = {
     return res.json();
   },
 
-  async generateOpenBankingKeyPair() {
-    const res = await fetch(`${API_BASE}/open-banking/generate-keys`, {
+  async getOpenBankingKeys() {
+    const res = await fetch(`${API_BASE}/open-banking/keys`);
+    if (!res.ok) return { has_keys: false, public_key: '' };
+    return res.json();
+  },
+
+  async generateOpenBankingKeyPair(force = false) {
+    const res = await fetch(`${API_BASE}/open-banking/generate-keys?force=${force}`, {
       method: 'POST',
     });
-    if (!res.ok) throw new Error("Erreur lors de la génération des clés RSA");
+    if (!res.ok) throw new Error("Erreur lors de la récupération des clés RSA");
+    return res.json();
+  },
+
+  // ─── Auto-enrichissement & Catégories ───
+  async enrichTransaction(payload) {
+    const res = await fetch(`${API_BASE}/transactions/enrich`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) return payload;
+    return res.json();
+  },
+
+  async getTransactionCategories() {
+    const res = await fetch(`${API_BASE}/transactions/categories`);
+    if (!res.ok) return [];
+    return res.json();
+  },
+
+  // ─── Planification & Synchro Automatique Régulière ───
+  async getSchedulerStatus() {
+    const res = await fetch(`${API_BASE}/open-banking/scheduler`);
+    if (!res.ok) throw new Error("Erreur récupération état synchronisation automatique");
+    return res.json();
+  },
+
+  async updateSchedulerConfig(config) {
+    const res = await fetch(`${API_BASE}/open-banking/scheduler/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+    if (!res.ok) throw new Error("Erreur mise à jour planification");
+    return res.json();
+  },
+
+  async triggerSchedulerSync() {
+    const res = await fetch(`${API_BASE}/open-banking/scheduler/trigger`, {
+      method: 'POST',
+    });
+    if (!res.ok) throw new Error("Erreur déclenchement synchronisation");
+    return res.json();
+  },
+
+  async syncBankTransactions() {
+    const res = await fetch(`${API_BASE}/open-banking/sync-transactions`, {
+      method: 'POST',
+    });
+    if (!res.ok) throw new Error("Erreur synchronisation transactions");
     return res.json();
   },
 };

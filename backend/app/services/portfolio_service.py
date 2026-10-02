@@ -309,3 +309,6 @@ class PortfolioService:
             session.add(snapshot)
 
         session.commit()
+
+
+portfolio_service = PortfolioService()

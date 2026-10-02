@@ -9,7 +9,11 @@ from app.routers import accounts, holdings, portfolio, market, transactions, ope
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    # Démarrage du planificateur de synchronisation automatique régulière
+    from app.services.sync_scheduler_service import sync_scheduler_service
+    sync_scheduler_service.start()
     yield
+    sync_scheduler_service.stop()
 
 
 app = FastAPI(

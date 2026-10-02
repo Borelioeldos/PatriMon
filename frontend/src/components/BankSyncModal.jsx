@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   X, RefreshCw, CheckCircle2, AlertCircle, Building2, 
   ShieldCheck, ArrowRight, Zap, Key, Link as LinkIcon, 
-  Trash2, ExternalLink, Check, Info, Landmark, Copy, Download
+  Trash2, ExternalLink, Check, Info, Landmark, Copy, Download,
+  Clock, Play, CheckCircle, Sliders, Calendar
 } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -11,9 +12,10 @@ export default function BankSyncModal({
   onClose, 
   onSyncSuccess 
 }) {
-  const [activeTab, setActiveTab] = useState('connections'); // 'connections', 'connect', 'settings'
+  const [activeTab, setActiveTab] = useState('connections'); // 'connections', 'scheduler', 'connect', 'settings'
   const [status, setStatus] = useState(null);
   const [institutions, setInstitutions] = useState([]);
+  const [schedulerStatus, setSchedulerStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [connectingId, setConnectingId] = useState(null);
@@ -30,6 +32,10 @@ export default function BankSyncModal({
   const [isSavingConfig, setIsSavingConfig] = useState(false);
   const [copiedKey, setCopiedKey] = useState(false);
 
+  // Scheduler state
+  const [isUpdatingScheduler, setIsUpdatingScheduler] = useState(false);
+  const [isTriggeringScheduler, setIsTriggeringScheduler] = useState(false);
+
   // Code de validation de session manuelle si besoin
   const [manualCode, setManualCode] = useState('');
   const [isValidatingCode, setIsValidatingCode] = useState(false);
@@ -44,14 +50,19 @@ export default function BankSyncModal({
     setLoading(true);
     setErrorMsg('');
     try {
-      const [statusData, instData] = await Promise.all([
+      const [statusData, instData, schedData] = await Promise.all([
         api.getOpenBankingStatus(),
-        api.getOpenBankingInstitutions('FR')
+        api.getOpenBankingInstitutions('FR'),
+        api.getSchedulerStatus()
       ]);
       setStatus(statusData);
       setInstitutions(instData);
+      setSchedulerStatus(schedData);
       setSimulationMode(statusData.simulation_mode ?? true);
       setApplicationId(statusData.application_id || '');
+      if (statusData.public_key) {
+        setGeneratedPublicKey(statusData.public_key);
+      }
     } catch (err) {
       console.error(err);
       setErrorMsg("Impossible de charger les données Open Banking.");
@@ -71,13 +82,59 @@ export default function BankSyncModal({
     try {
       const result = await api.syncBankBalances();
       setSyncResult(result);
-      setSuccessMsg(result.message || "Soldes bancaires synchronisés avec succès !");
+      setSuccessMsg(result.message || "Soldes et transactions synchronisés avec succès !");
       await loadData();
       if (onSyncSuccess) onSyncSuccess();
     } catch (err) {
       setErrorMsg(err.message || "Erreur lors de la synchronisation");
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const handleToggleScheduler = async (newVal) => {
+    setIsUpdatingScheduler(true);
+    try {
+      const updated = await api.updateSchedulerConfig({ enabled: newVal });
+      setSchedulerStatus(updated);
+      setSuccessMsg(newVal ? "Synchronisation automatique activée !" : "Synchronisation automatique désactivée.");
+    } catch (err) {
+      setErrorMsg(err.message || "Erreur lors de la mise à jour de la planification");
+    } finally {
+      setIsUpdatingScheduler(false);
+    }
+  };
+
+  const handleChangeSchedulerInterval = async (minutes) => {
+    setIsUpdatingScheduler(true);
+    try {
+      const updated = await api.updateSchedulerConfig({ interval_minutes: minutes });
+      setSchedulerStatus(updated);
+      setSuccessMsg(`Intervalle mis à jour : ${updated.interval_label}`);
+    } catch (err) {
+      setErrorMsg(err.message || "Erreur lors du changement d'intervalle");
+    } finally {
+      setIsUpdatingScheduler(false);
+    }
+  };
+
+  const handleTriggerSchedulerSync = async () => {
+    setIsTriggeringScheduler(true);
+    setErrorMsg('');
+    setSuccessMsg('');
+    try {
+      const res = await api.triggerSchedulerSync();
+      if (res.success) {
+        setSuccessMsg(`Synchronisation réussie ! ${res.accounts_synced} compte(s) et ${res.transactions_new} transaction(s) mises à jour.`);
+      } else {
+        setErrorMsg(res.error || "Erreur lors de la synchronisation");
+      }
+      await loadData();
+      if (onSyncSuccess) onSyncSuccess();
+    } catch (err) {
+      setErrorMsg(err.message || "Erreur lors de l'exécution de la synchronisation");
+    } finally {
+      setIsTriggeringScheduler(false);
     }
   };
 
@@ -89,7 +146,7 @@ export default function BankSyncModal({
     try {
       const res = await api.connectBank(instId, window.location.origin);
       if (res.is_simulation) {
-        setSuccessMsg(`Banque connectée en mode Démo ! Les soldes ont été synchronisés.`);
+        setSuccessMsg(`Banque connectée en mode Démo ! Les comptes et transactions ont été synchronisés.`);
         await loadData();
         if (onSyncSuccess) onSyncSuccess();
         setActiveTab('connections');
@@ -126,16 +183,19 @@ export default function BankSyncModal({
     }
   };
 
-  const handleGenerateKeyPair = async () => {
+  const handleGenerateKeyPair = async (force = false) => {
+    if (force && !window.confirm("Attention : si vous régénérez une nouvelle clé, vous devrez impérativement mettre à jour la clé publique dans la console Enable Banking. Voulez-vous continuer ?")) {
+      return;
+    }
     setIsGeneratingKey(true);
     setErrorMsg('');
     try {
-      const data = await api.generateOpenBankingKeyPair();
-      setPrivateKey(data.private_key);
-      setGeneratedPublicKey(data.public_key);
-      setSuccessMsg("Paire de clés RSA générée avec succès ! Copiez la clé publique ci-dessous.");
+      const data = await api.generateOpenBankingKeyPair(force);
+      if (data.private_key) setPrivateKey(data.private_key);
+      if (data.public_key) setGeneratedPublicKey(data.public_key);
+      setSuccessMsg(data.message || (force ? "Nouvelle paire de clés générée !" : "Clé statique permanente chargée avec succès."));
     } catch (err) {
-      setErrorMsg(err.message || "Erreur lors de la génération de clés");
+      setErrorMsg(err.message || "Erreur lors de la récupération des clés");
     } finally {
       setIsGeneratingKey(false);
     }
@@ -196,7 +256,7 @@ export default function BankSyncModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-[#111827] border border-slate-800 w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="bg-[#111827] border border-slate-800 w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-slate-800">
           <div className="flex items-center gap-3">
@@ -205,7 +265,7 @@ export default function BankSyncModal({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-lg font-bold text-white">Synchronisation Bancaire DSP2</h3>
+                <h3 className="text-lg font-bold text-white">Synchronisation Bancaire Automatique</h3>
                 {isSimulation ? (
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 uppercase font-semibold">
                     Mode Démo
@@ -217,7 +277,7 @@ export default function BankSyncModal({
                 )}
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                BoursoBank, BNP Paribas, Revolut • Actualisation directe des liquidités
+                BoursoBank, BNP Paribas, Revolut • Actualisation continue des soldes et transactions
               </p>
             </div>
           </div>
@@ -230,10 +290,10 @@ export default function BankSyncModal({
         </div>
 
         {/* Onglets */}
-        <div className="flex border-b border-slate-800 px-5 bg-slate-900/40 text-xs font-semibold">
+        <div className="flex border-b border-slate-800 px-5 bg-slate-900/40 text-xs font-semibold overflow-x-auto">
           <button
             onClick={() => setActiveTab('connections')}
-            className={`py-3 px-4 border-b-2 transition-all flex items-center gap-2 ${
+            className={`py-3 px-4 border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
               activeTab === 'connections'
                 ? 'border-blue-500 text-blue-400'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -242,9 +302,25 @@ export default function BankSyncModal({
             <LinkIcon className="w-4 h-4" />
             <span>Banques Connectées ({connections.length})</span>
           </button>
+
+          <button
+            onClick={() => setActiveTab('scheduler')}
+            className={`py-3 px-4 border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'scheduler'
+                ? 'border-blue-500 text-blue-400'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Clock className="w-4 h-4" />
+            <span>Synchro Automatique ⏱️</span>
+            {schedulerStatus?.enabled && (
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            )}
+          </button>
+
           <button
             onClick={() => setActiveTab('connect')}
-            className={`py-3 px-4 border-b-2 transition-all flex items-center gap-2 ${
+            className={`py-3 px-4 border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
               activeTab === 'connect'
                 ? 'border-blue-500 text-blue-400'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -253,16 +329,17 @@ export default function BankSyncModal({
             <Zap className="w-4 h-4" />
             <span>Connecter une Banque</span>
           </button>
+
           <button
             onClick={() => setActiveTab('settings')}
-            className={`py-3 px-4 border-b-2 transition-all flex items-center gap-2 ${
+            className={`py-3 px-4 border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
               activeTab === 'settings'
                 ? 'border-blue-500 text-blue-400'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
             <Key className="w-4 h-4" />
-            <span>Configuration Enable Banking</span>
+            <span>Configuration API</span>
           </button>
         </div>
 
@@ -293,11 +370,43 @@ export default function BankSyncModal({
               {/* TAB 1: BANQUES CONNECTÉES */}
               {activeTab === 'connections' && (
                 <div className="space-y-4">
+                  {/* Bandeau d'état de l'auto-synchro */}
+                  <div className="p-3.5 rounded-2xl bg-gradient-to-r from-blue-900/30 to-indigo-900/20 border border-blue-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center flex-shrink-0">
+                        <Clock className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-white">Synchronisation automatique continue</span>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                            schedulerStatus?.enabled 
+                              ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' 
+                              : 'bg-slate-800 text-slate-400 border-slate-700'
+                          }`}>
+                            {schedulerStatus?.enabled ? 'Active' : 'Désactivée'}
+                          </span>
+                        </div>
+                        <p className="text-slate-400 text-[11px] mt-0.5">
+                          {schedulerStatus?.enabled 
+                            ? `${schedulerStatus.interval_label} • Prochaine exécution dans : ${schedulerStatus.time_until_next || 'quelques instants'}`
+                            : "La synchronisation en tâche de fond est actuellement inactive"}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setActiveTab('scheduler')}
+                      className="px-3 py-1.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 font-semibold text-[11px] transition-all self-start sm:self-auto whitespace-nowrap"
+                    >
+                      Régler l'intervalle ⏱️
+                    </button>
+                  </div>
+
                   <div className="flex items-center justify-between">
                     <div>
                       <h4 className="text-sm font-bold text-white">Comptes & Soldes synchronisés</h4>
                       <p className="text-xs text-slate-400">
-                        Liquidités réelles issues de vos comptes bancaires
+                        Liquidités réelles et transactions issues de vos comptes bancaires
                       </p>
                     </div>
 
@@ -307,16 +416,23 @@ export default function BankSyncModal({
                       className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold transition-all shadow-md shadow-blue-500/20 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
-                      <span>{syncing ? 'Synchronisation...' : 'Synchroniser les soldes'}</span>
+                      <span>{syncing ? 'Synchronisation...' : 'Synchroniser tout'}</span>
                     </button>
                   </div>
 
                   {/* Résumé de dernière synchro */}
                   {syncResult && syncResult.updated_accounts && syncResult.updated_accounts.length > 0 && (
-                    <div className="p-3 rounded-xl bg-slate-900/80 border border-emerald-500/30 text-xs space-y-1.5">
-                      <div className="font-semibold text-emerald-400 flex items-center gap-1.5">
-                        <Check className="w-4 h-4" />
-                        <span>Mise à jour réussie :</span>
+                    <div className="p-3.5 rounded-xl bg-slate-900/80 border border-emerald-500/30 text-xs space-y-2">
+                      <div className="font-semibold text-emerald-400 flex items-center justify-between">
+                        <span className="flex items-center gap-1.5">
+                          <Check className="w-4 h-4" />
+                          Mise à jour réussie :
+                        </span>
+                        {syncResult.new_transactions_imported !== undefined && (
+                          <span className="px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 font-bold text-[11px]">
+                            +{syncResult.new_transactions_imported} transactions importées
+                          </span>
+                        )}
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
                         {syncResult.updated_accounts.map((acc, idx) => (
@@ -336,7 +452,7 @@ export default function BankSyncModal({
                       </div>
                       <h5 className="text-sm font-semibold text-white">Aucune liaison bancaire active</h5>
                       <p className="text-xs text-slate-400 max-w-md mx-auto">
-                        Connectez vos comptes BoursoBank, BNP Paribas ou Revolut pour récupérer automatiquement vos liquidités et soldes de livrets.
+                        Connectez vos comptes BoursoBank, BNP Paribas ou Revolut pour récupérer automatiquement vos liquidités et vos flux de transactions.
                       </p>
                       <button
                         onClick={() => setActiveTab('connect')}
@@ -393,178 +509,270 @@ export default function BankSyncModal({
                 </div>
               )}
 
-              {/* TAB 2: CONNECTER UNE BANQUE */}
-              {activeTab === 'connect' && (
-                <div className="space-y-4">
+              {/* TAB 2: SYNCHRONISATION AUTOMATIQUE & PLANIFICATEUR */}
+              {activeTab === 'scheduler' && (
+                <div className="space-y-5 text-xs">
                   <div>
-                    <h4 className="text-sm font-bold text-white">Sélectionnez votre banque</h4>
-                    <p className="text-xs text-slate-400">
-                      Accès sécurisé DSP2 lecture seule (aucun virement, uniquement les soldes et liquidités).
+                    <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-blue-400" />
+                      Planification Automatique des Comptes & Transactions
+                    </h4>
+                    <p className="text-slate-400 mt-1">
+                      Le serveur FastAPI actualise automatiquement vos soldes bancaires, télécharge les nouvelles transactions, et met à jour votre historique de patrimoine selon l'intervalle de votre choix.
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {institutions.map((inst) => {
-                      const isConnecting = connectingId === inst.id;
-                      const isAlreadyConnected = connections.some(c => c.institution_id.toLowerCase() === inst.id.toLowerCase());
-
-                      return (
-                        <div
-                          key={inst.id}
-                          className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between hover:border-slate-700 transition-all space-y-3"
-                        >
-                          <div className="flex items-start justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-xl bg-blue-600/10 border border-blue-500/20 text-blue-400 font-bold flex items-center justify-center text-xs">
-                                {inst.name.substring(0, 2).toUpperCase()}
-                              </div>
-                              <div>
-                                <h5 className="font-bold text-sm text-white">{inst.name}</h5>
-                                <span className="text-[11px] text-slate-400">France • DSP2 Live</span>
-                              </div>
-                            </div>
-                            {isAlreadyConnected && (
-                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-semibold">
-                                Connecté
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="pt-2 border-t border-slate-800/80 flex justify-end">
-                            <button
-                              onClick={() => handleConnectInstitution(inst.id)}
-                              disabled={isConnecting}
-                              className={`w-full py-2 px-3 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
-                                isAlreadyConnected
-                                  ? 'bg-slate-800 hover:bg-slate-700 text-slate-300'
-                                  : 'bg-blue-600 hover:bg-blue-500 text-white shadow-sm shadow-blue-500/20'
-                              } disabled:opacity-50`}
-                            >
-                              {isConnecting ? (
-                                <>
-                                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                  <span>Connexion...</span>
-                                </>
-                              ) : isAlreadyConnected ? (
-                                <>
-                                  <RefreshCw className="w-3.5 h-3.5" />
-                                  <span>Resynchroniser</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Zap className="w-3.5 h-3.5" />
-                                  <span>{isSimulation ? "Connecter (Démo)" : "Connecter ma banque"}</span>
-                                </>
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Section de validation manuelle de code de retour si besoin */}
-                  {!isSimulation && (
-                    <div className="mt-4 pt-4 border-t border-slate-800 space-y-2">
-                      <div className="text-xs font-semibold text-slate-300">
-                        Code d'autorisation bancaire (si retour de redirection) :
-                      </div>
-                      <form onSubmit={handleValidateSessionCode} className="flex gap-2">
-                        <input
-                          type="text"
-                          value={manualCode}
-                          onChange={(e) => setManualCode(e.target.value)}
-                          placeholder="Collez ici le code retourné dans l'URL par votre banque"
-                          className="flex-1 px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
-                        />
-                        <button
-                          type="submit"
-                          disabled={isValidatingCode || !manualCode.trim()}
-                          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl transition-all disabled:opacity-50 flex items-center gap-1.5"
-                        >
-                          {isValidatingCode ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                          <span>Valider</span>
-                        </button>
-                      </form>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* TAB 3: CONFIGURATION ENABLE BANKING */}
-              {activeTab === 'settings' && (
-                <form onSubmit={handleSaveConfig} className="space-y-4">
-                  <div className="p-4 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-xs text-blue-300 space-y-2">
-                    <div className="flex items-center gap-2 font-bold text-sm text-blue-200">
-                      <Info className="w-4 h-4 flex-shrink-0" />
-                      <span>Comment fonctionne Enable Banking ?</span>
-                    </div>
-                    <ol className="list-decimal list-inside space-y-1 text-slate-300 leading-relaxed">
-                      <li>Créez un compte gratuit sur le portail <strong>Enable Banking</strong> (gratuit pour vos propres comptes).</li>
-                      <li>Cliquez sur <strong>"Générer une paire de clés RSA"</strong> ci-dessous.</li>
-                      <li>Copiez la <strong>Clé Publique</strong> et collez-la dans les paramètres de votre application Enable Banking.</li>
-                      <li>Collez votre <strong>Application ID</strong> ci-dessous et enregistrez !</li>
-                    </ol>
-                  </div>
-
-                  {/* Toggle Simulation */}
-                  <div className="flex items-center justify-between p-4 bg-slate-900/80 rounded-2xl border border-slate-800">
+                  {/* Interrupteur Activation */}
+                  <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-between">
                     <div>
-                      <div className="text-sm font-bold text-white">Mode Simulation / Démo</div>
-                      <div className="text-xs text-slate-400">
-                        Simule les réponses DSP2 de BoursoBank, BNP et Revolut sans clés externes
+                      <div className="text-sm font-bold text-white">Activer la synchronisation automatique</div>
+                      <div className="text-xs text-slate-400 mt-0.5">
+                        Fonctionne en arrière-plan sans avoir à garder le navigateur ouvert
                       </div>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
                       <input 
-                        type="checkbox" 
-                        checked={simulationMode} 
-                        onChange={(e) => setSimulationMode(e.target.checked)}
+                        type="checkbox"
+                        checked={schedulerStatus?.enabled ?? true}
+                        onChange={(e) => handleToggleScheduler(e.target.checked)}
+                        disabled={isUpdatingScheduler}
                         className="sr-only peer"
                       />
                       <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                     </label>
                   </div>
 
-                  {/* Générateur de clés RSA */}
-                  <div className="p-4 bg-slate-900/70 rounded-2xl border border-slate-800 space-y-3">
+                  {/* Choix de l'intervalle régulier */}
+                  <div className="space-y-2">
+                    <label className="block text-slate-300 font-semibold uppercase tracking-wider text-[11px]">
+                      Fréquence de rafraîchissement
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                      {[
+                        { minutes: 60, label: "Toutes les heures", desc: "60 min" },
+                        { minutes: 240, label: "Toutes les 4 heures", desc: "Recommandé" },
+                        { minutes: 720, label: "Toutes les 12 heures", desc: "2x par jour" },
+                        { minutes: 1440, label: "Une fois par jour", desc: "24 heures" },
+                      ].map((freq) => (
+                        <button
+                          key={freq.minutes}
+                          type="button"
+                          onClick={() => handleChangeSchedulerInterval(freq.minutes)}
+                          disabled={isUpdatingScheduler || !schedulerStatus?.enabled}
+                          className={`p-3 rounded-xl border text-left transition-all ${
+                            schedulerStatus?.interval_minutes === freq.minutes
+                              ? 'bg-blue-600/20 border-blue-500 text-white shadow-md'
+                              : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                          } disabled:opacity-50`}
+                        >
+                          <div className="font-bold text-xs">{freq.label}</div>
+                          <div className="text-[10px] text-slate-400 mt-0.5">{freq.desc}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* État en direct & prochaine exécution */}
+                  <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                      <span className="text-slate-400">Statut actuel du service :</span>
+                      <span className="flex items-center gap-1.5 font-bold text-white">
+                        <span className={`w-2 h-2 rounded-full ${schedulerStatus?.enabled ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'}`} />
+                        {schedulerStatus?.enabled ? 'Actif & En attente' : 'Inactif'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                      <span className="text-slate-400">Prochaine exécution programmée :</span>
+                      <span className="font-mono font-bold text-blue-400">
+                        {schedulerStatus?.next_run ? `${schedulerStatus.next_run} (dans ${schedulerStatus.time_until_next})` : 'Aucune'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                      <span className="text-slate-400">Dernier cycle automatique :</span>
+                      <span className="font-mono text-slate-300">
+                        {schedulerStatus?.last_run || 'Aucun cycle exécuté'}
+                      </span>
+                    </div>
+
+                    {schedulerStatus?.last_summary && (
+                      <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-[11px] text-slate-300 flex justify-between items-center">
+                        <span>Dernier résultat :</span>
+                        <span className="font-semibold text-emerald-400">
+                          {schedulerStatus.last_summary.accounts_synced || 0} comptes • {schedulerStatus.last_summary.transactions_new || 0} transactions
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Bouton de déclenchement forcé immédiat */}
+                  <div className="pt-2 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={handleTriggerSchedulerSync}
+                      disabled={isTriggeringScheduler}
+                      className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold transition-all shadow-lg shadow-blue-500/25 flex items-center gap-2 disabled:opacity-50"
+                    >
+                      <Play className={`w-3.5 h-3.5 ${isTriggeringScheduler ? 'animate-spin' : ''}`} />
+                      <span>{isTriggeringScheduler ? 'Synchronisation en cours...' : 'Exécuter un cycle complet maintenant'}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 3: CONNECTER UNE BANQUE */}
+              {activeTab === 'connect' && (
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="text-sm font-bold text-white">Sélectionnez votre établissement</h4>
+                    <p className="text-xs text-slate-400">
+                      Connexion directe et sécurisée DSP2 conforme à la réglementation européenne
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {institutions.map((inst) => {
+                      const isConnecting = connectingId === inst.id;
+                      return (
+                        <div
+                          key={inst.id}
+                          className="bg-slate-900/60 border border-slate-800 hover:border-blue-500/50 rounded-2xl p-4 flex items-center justify-between gap-3 transition-all group"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700/80 flex items-center justify-center font-bold text-white text-xs group-hover:border-blue-500/40">
+                              {inst.logo ? (
+                                <img src={inst.logo} alt={inst.name} className="w-7 h-7 object-contain" />
+                              ) : (
+                                inst.name.substring(0, 3).toUpperCase()
+                              )}
+                            </div>
+                            <div>
+                              <div className="font-bold text-sm text-white group-hover:text-blue-400 transition-colors">
+                                {inst.name}
+                              </div>
+                              <div className="text-[11px] text-slate-400">
+                                {inst.title || inst.country}
+                              </div>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => handleConnectInstitution(inst.id)}
+                            disabled={isConnecting}
+                            className="px-3 py-1.5 rounded-xl bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/30 text-xs font-semibold transition-all flex items-center gap-1.5 disabled:opacity-50"
+                          >
+                            {isConnecting ? (
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <ArrowRight className="w-3.5 h-3.5" />
+                            )}
+                            <span>{isSimulation ? 'Lier' : 'Connecter'}</span>
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Section de validation manuelle de session */}
+                  <div className="mt-6 pt-5 border-t border-slate-800 space-y-3">
+                    <div>
+                      <h5 className="text-xs font-bold text-slate-300">Validation manuelle du code de session</h5>
+                      <p className="text-[11px] text-slate-500">
+                        Si votre navigateur n'a pas redirigé automatiquement, collez le paramètre <code>code=...</code> ici :
+                      </p>
+                    </div>
+
+                    <form onSubmit={handleValidateSessionCode} className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Ex: 884b2382-7e9b-4399-..."
+                        value={manualCode}
+                        onChange={(e) => setManualCode(e.target.value)}
+                        className="flex-1 px-3.5 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 font-mono focus:outline-none focus:border-blue-500"
+                      />
+                      <button
+                        type="submit"
+                        disabled={isValidatingCode || !manualCode.trim()}
+                        className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition-all disabled:opacity-50"
+                      >
+                        {isValidatingCode ? 'Validation...' : 'Valider'}
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 4: CONFIGURATION API ENABLE BANKING */}
+              {activeTab === 'settings' && (
+                <form onSubmit={handleSaveConfig} className="space-y-4 text-xs">
+                  <div>
+                    <h4 className="text-sm font-bold text-white">Paramètres Enable Banking & Clés RSA</h4>
+                    <p className="text-slate-400 mt-0.5">
+                      Configurez votre environnement de production Enable Banking pour synchroniser vos véritables comptes français.
+                    </p>
+                  </div>
+
+                  {/* Bascule Mode Simulation / Réel */}
+                  <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-between">
+                    <div>
+                      <div className="font-semibold text-white">Mode Simulation / Démo</div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">
+                        Testez l'application instantanément avec des soldes et transactions réalistes sans compte réel.
+                      </div>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox"
+                        checked={simulationMode}
+                        onChange={(e) => setSimulationMode(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-600"></div>
+                    </label>
+                  </div>
+
+                  {/* Section Clé Publique Permanente */}
+                  <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-2.5">
                     <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-xs font-bold text-white">Assistant Clés RSA (Enable Banking)</div>
-                        <div className="text-[11px] text-slate-400">Générez une clé en 1 clic pour l'enregistrer chez Enable Banking</div>
+                      <div className="flex items-center gap-2">
+                        <Key className="w-4 h-4 text-blue-400" />
+                        <span className="font-bold text-slate-200">Votre Clé Publique RSA Statique</span>
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-semibold">
+                          Fixe & Permanente
+                        </span>
                       </div>
                       <button
                         type="button"
-                        onClick={handleGenerateKeyPair}
-                        disabled={isGeneratingKey}
-                        className="px-3 py-1.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-xs font-semibold transition-all flex items-center gap-1.5"
+                        onClick={handleCopyPublicKey}
+                        disabled={!generatedPublicKey}
+                        className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition-all flex items-center gap-1.5 shadow-lg shadow-blue-500/20"
                       >
-                        {isGeneratingKey ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Key className="w-3.5 h-3.5" />}
-                        <span>Générer mes clés</span>
+                        {copiedKey ? <Check className="w-3.5 h-3.5 text-emerald-300" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedKey ? 'Copié !' : 'Copier la clé'}</span>
                       </button>
                     </div>
 
-                    {generatedPublicKey && (
-                      <div className="space-y-2 pt-2 border-t border-slate-800">
-                        <div className="flex items-center justify-between text-[11px] text-slate-400">
-                          <span>Clé Publique à coller sur Enable Banking :</span>
-                          <button
-                            type="button"
-                            onClick={handleCopyPublicKey}
-                            className="text-blue-400 hover:text-blue-300 flex items-center gap-1 text-[11px]"
-                          >
-                            {copiedKey ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                            <span>{copiedKey ? 'Copié !' : 'Copier la clé'}</span>
-                          </button>
-                        </div>
-                        <textarea
-                          readOnly
-                          rows={3}
-                          value={generatedPublicKey}
-                          className="w-full font-mono text-[10px] bg-slate-950 p-2 rounded-lg border border-slate-800 text-slate-300 focus:outline-none"
-                        />
-                      </div>
-                    )}
+                    <textarea
+                      readOnly
+                      rows={4}
+                      value={generatedPublicKey || "Chargement de la clé publique statique..."}
+                      className="w-full font-mono text-[10px] bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-slate-300 select-all focus:outline-none focus:border-blue-500"
+                    />
+
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-[10px] text-slate-500">
+                        Stockée localement dans <code className="text-slate-400">backend/certs/enable_banking_public.pem</code>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleGenerateKeyPair(true)}
+                        disabled={isGeneratingKey}
+                        className="text-[10px] text-slate-500 hover:text-slate-300 underline transition-colors"
+                      >
+                        Régénérer une nouvelle paire (avancé)
+                      </button>
+                    </div>
                   </div>
 
                   {/* Identifiants réels Enable Banking */}

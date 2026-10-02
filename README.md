@@ -74,17 +74,21 @@ Le frontend écoute sur `0.0.0.0`, ce qui le rend accessible à tous les apparei
    - Comparateur dynamique multi-courbes en % avec les indices majeurs : **MSCI World** (`CW8.PA`), **S&P 500** (`^GSPC`), **CAC 40** (`^FCHI`), **Bitcoin** (`BTC-EUR`).
    - Périodes ajustables (1 mois, 3 mois, 6 mois, 1 an) et calcul automatique de l'**Alpha** (surperformance relative).
 
-### Phase 3 : Automatisation des Flux Externes, DSP2 & BNP PEE/PERO
-7. **Synchronisation Bancaire Automatique (DSP2 — Enable Banking)** :
-   - Intégration de l'API européenne moderne **Enable Banking** (accessible gratuitement pour l'usage personnel) pour synchroniser en direct les liquidités (BoursoBank, BNP Paribas, Revolut, etc.).
-   - Authentification sécurisée par signature **JWT RS256** avec générateur de clés RSA (2048-bit) directement intégré dans l'interface en 1 clic.
-   - **Mode Démo / Simulation instantané** : permet de tester immédiatement la synchronisation des liquidités en 1 clic sans avoir à configurer de clés API.
-   - Chiffrement local et respect total de la vie privée (aucune donnée d'authentification bancaire stockée).
-8. **Import Automatique Relevé BNP Épargne Entreprise (PEE & PERO Cardif Retraite)** :
-   - Module d'import en **1 clic** par glisser-déposer de votre relevé de situation officiel PDF ou CSV (calibré spécifiquement sur Schneider Electric France / BNP Paribas Cardif Retraite).
-   - Détection intelligente et séparation propre entre le **PEE** (fonds 5 ans bloqués) et le **PERO Retraite** (plan d'épargne retraite obligatoire).
-   - Rétro-ingénierie automatique de la valeur liquidative (VL) unitaire et du Prix de Revient Unitaire (PRU) à partir des plus-values et des parts du relevé.
-   - Création automatique du compte d'épargne retraite `BNP Cardif - PERO Retraite` et mise à jour de l'ensemble des positions à l'euro près.
+### Phase 3 : Automatisation des Flux Externes, DSP2, Synchro Périodique & Transactions Intelligentes
+7. **Synchronisation Bancaire Automatique & Régulière (DSP2 — Enable Banking)** :
+   - Intégration de l'API européenne moderne **Enable Banking** pour synchroniser en direct les liquidités (BoursoBank, BNP Paribas, Revolut...).
+   - **Planificateur de fond automatique (`sync_scheduler_service`)** : synchronisation périodique autonome (toutes les heures, 4 heures, 12 heures ou 24 heures) sans action manuelle requise.
+   - Authentification sécurisée par signature **JWT RS256** avec générateur de clés RSA statiques permanentes.
+   - **Mode Démo / Simulation instantané** pour tester immédiatement avec des comptes et transactions réalistes.
+8. **Remplissage Automatique & Catégorisation Intelligente des Transactions** :
+   - **Saisie assistée instantanée** : la saisie d'un ticker (ex: `CW8.PA`, `AAPL`, `BTC-EUR`) télécharge automatiquement en direct la cotation, le nom officiel, la devise et calcule le montant total net (`quantité × cours + frais`).
+   - Raccourcis 1-clic pour les opérations récurrentes (*Salaire*, *Courses*, *Factures*, *Abonnements*, *Virements*).
+   - **Synchronisation bancaire continue** : nettoyage automatique des libellés bancaires bruts (vrais noms des commerçants) et classification automatique dans 12 catégories intelligentes (*Alimentation*, *Logement*, *Revenus*, *Investissement*...).
+   - Déduplication infaillible par identifiant unique de transaction (`external_id`).
+9. **Import Automatique Relevé BNP Épargne Entreprise (PEE & PERO Cardif Retraite)** :
+   - Module d'import en **1 clic** par glisser-déposer de votre relevé officiel PDF ou CSV (calibré sur Schneider Electric France / BNP Paribas Cardif Retraite).
+   - Détection et séparation automatique entre **PEE** et **PERO Retraite**.
+   - Rétro-ingénierie automatique de la VL unitaire et du PRU unitaire.
 
 ---
 

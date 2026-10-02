@@ -20,6 +20,19 @@ def init_db():
     )
     SQLModel.metadata.create_all(engine)
 
+    # Migration légère des colonnes manquantes (SQLite)
+    try:
+        with engine.begin() as conn:
+            cols = [c[1] for c in conn.exec_driver_sql("PRAGMA table_info([transaction])").fetchall()]
+            if cols:
+                if "category" not in cols:
+                    conn.exec_driver_sql("ALTER TABLE [transaction] ADD COLUMN category VARCHAR")
+                if "external_id" not in cols:
+                    conn.exec_driver_sql("ALTER TABLE [transaction] ADD COLUMN external_id VARCHAR")
+    except Exception as e:
+        import logging
+        logging.getLogger("database").warning(f"Note migration colonnes transaction: {e}")
+
 
 def get_session():
     """Dépendance FastAPI : fournit une session de base de données."""

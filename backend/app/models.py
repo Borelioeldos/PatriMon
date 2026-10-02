@@ -182,6 +182,8 @@ class TransactionBase(SQLModel):
     fees: float = 0.0                     # Frais d'ordre / courtage
     fees_eur: float = 0.0
     currency: str = "EUR"
+    category: Optional[str] = None        # Ex: Alimentation, Logement, Revenus, Investissement, Abonnements...
+    external_id: Optional[str] = None     # Identifiant externe de transaction (Open Banking DSP2)
     notes: Optional[str] = None
 
 

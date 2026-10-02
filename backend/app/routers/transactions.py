@@ -18,6 +18,7 @@ def list_transactions(
     account_id: Optional[int] = Query(None, description="Filtrer par compte"),
     holding_id: Optional[int] = Query(None, description="Filtrer par position"),
     type: Optional[TransactionType] = Query(None, description="Filtrer par type d'opération"),
+    category: Optional[str] = Query(None, description="Filtrer par catégorie"),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     session: Session = Depends(get_session),
@@ -31,6 +32,8 @@ def list_transactions(
         query = query.where(Transaction.holding_id == holding_id)
     if type:
         query = query.where(Transaction.type == type)
+    if category:
+        query = query.where(Transaction.category == category)
 
     query = query.order_by(Transaction.transaction_date.desc(), Transaction.id.desc())
     query = query.offset(offset).limit(limit)
@@ -59,6 +62,8 @@ def list_transactions(
             fees=t.fees,
             fees_eur=t.fees_eur,
             currency=t.currency,
+            category=t.category,
+            external_id=t.external_id,
             notes=t.notes,
             realized_gain_eur=t.realized_gain_eur,
             created_at=t.created_at,
@@ -68,6 +73,22 @@ def list_transactions(
         results.append(tr)
 
     return results
+
+
+@router.get("/categories", response_model=List[str])
+def list_categories():
+    """Retourne la liste des catégories de transactions disponibles."""
+    from app.services.transaction_enricher import ALL_CATEGORIES
+    return ALL_CATEGORIES
+
+
+@router.post("/enrich", response_model=Dict[str, Any])
+def enrich_transaction(
+    payload: Dict[str, Any],
+):
+    """Auto-complète et pré-remplit les champs d'une transaction (titre, cotation, catégorie, montants)."""
+    from app.services.transaction_enricher import transaction_enricher
+    return transaction_enricher.enrich_transaction_data(payload)
 
 
 @router.post("/", response_model=TransactionRead)
@@ -95,6 +116,8 @@ def create_transaction(
             fees=tx.fees,
             fees_eur=tx.fees_eur,
             currency=tx.currency,
+            category=tx.category,
+            external_id=tx.external_id,
             notes=tx.notes,
             realized_gain_eur=tx.realized_gain_eur,
             created_at=tx.created_at,

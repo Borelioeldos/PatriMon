@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "interval_minutes": 240,
+  "last_run": "2026-10-02T23:35:44.167853+00:00",
+  "next_run": "2026-10-03T03:35:44.167853+00:00",
+  "last_status": "success",
+  "last_summary": {
+    "success": true,
+    "accounts_synced": 1,
+    "total_balance_synced": 10.45,
+    "transactions_new": 0,
+    "synced_at": "02/10/2026 23:35:44"
+  }
+}

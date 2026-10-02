@@ -14,7 +14,8 @@ import httpx
 import jwt
 from sqlmodel import Session, select
 
-from app.models import BankConnection, BankAccountMapping, Account, AccountType
+from app.models import BankConnection, BankAccountMapping, Account, AccountType, Transaction, TransactionType
+from app.services.transaction_enricher import transaction_enricher
 
 logger = logging.getLogger("open_banking_service")
 
@@ -73,8 +74,27 @@ class OpenBankingService:
         self.provider = "enable_banking"
         self.application_id: str = os.environ.get("ENABLE_BANKING_APP_ID", "")
         self.private_key: str = os.environ.get("ENABLE_BANKING_PRIVATE_KEY", "")
+        self.public_key: str = ""
         self.is_simulation_mode: bool = os.environ.get("OPEN_BANKING_SIMULATION", "true").lower() == "true"
         self._load_config()
+
+    def get_public_key(self) -> str:
+        """Dérive la clé publique statique permanente à partir de la clé privée actuelle."""
+        if self.public_key:
+            return self.public_key
+        if not self.private_key:
+            return ""
+        try:
+            priv = serialization.load_pem_private_key(self.private_key.encode("utf-8"), password=None)
+            pub = priv.public_key().public_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo,
+            ).decode("utf-8")
+            self.public_key = pub
+            return pub
+        except Exception as e:
+            logger.warning(f"Impossible de dériver la clé publique: {e}")
+            return ""
 
     def _load_config(self):
         """Charge la configuration depuis open_banking_config.json si existant."""
@@ -84,19 +104,24 @@ class OpenBankingService:
                     cfg = json.load(f)
                     self.application_id = cfg.get("application_id", self.application_id)
                     self.private_key = cfg.get("private_key", self.private_key)
+                    self.public_key = cfg.get("public_key", "")
                     if "simulation_mode" in cfg:
                         self.is_simulation_mode = cfg["simulation_mode"]
+                if not self.public_key and self.private_key:
+                    self.public_key = self.get_public_key()
             except Exception as e:
                 logger.warning(f"Impossible de charger open_banking_config.json: {e}")
 
     def _save_config(self):
         """Sauvegarde la configuration dans open_banking_config.json."""
         try:
+            pub_key = self.get_public_key()
             with open(CONFIG_FILE_PATH, "w", encoding="utf-8") as f:
                 json.dump({
                     "provider": self.provider,
                     "application_id": self.application_id,
                     "private_key": self.private_key,
+                    "public_key": pub_key,
                     "simulation_mode": self.is_simulation_mode,
                 }, f, indent=2)
         except Exception as e:
@@ -119,6 +144,7 @@ class OpenBankingService:
             self.application_id = app_id
         if priv_key:
             self.private_key = priv_key
+            self.public_key = self.get_public_key()
         self.is_simulation_mode = simulation_mode
         self._save_config()
 
@@ -133,8 +159,10 @@ class OpenBankingService:
         return {
             "provider": "enable_banking",
             "has_credentials": has_creds,
-            "application_id": self.application_id[:8] + "..." if len(self.application_id) > 8 else self.application_id,
+            "application_id": self.application_id,
+            "masked_application_id": self.application_id[:8] + "..." if len(self.application_id) > 8 else self.application_id,
             "has_private_key": bool(self.private_key),
+            "public_key": self.get_public_key(),
             "simulation_mode": effective_sim,
             "connections_count": len(connections),
             "mappings_count": len(mappings),
@@ -363,6 +391,129 @@ class OpenBankingService:
                 "link": auth_url,
             }
 
+    # ────────────────────── Gestion Auto des Comptes PatriMon ──────────────────────
+
+    def _determine_account_color(self, institution_name: str) -> str:
+        """Attribue une couleur élégante selon l'établissement bancaire."""
+        inst = institution_name.lower()
+        if "bourso" in inst:
+            return "#004899"
+        elif "bnp" in inst:
+            return "#008A5A"
+        elif "revolut" in inst:
+            return "#0075FF"
+        elif "fortuneo" in inst:
+            return "#007E33"
+        elif "agricole" in inst:
+            return "#008272"
+        elif "societe" in inst or "generale" in inst:
+            return "#E60028"
+        elif "bbva" in inst:
+            return "#004481"
+        elif "mock" in inst or "test" in inst:
+            return "#6366F1"
+        return "#3B82F6"
+
+    def _determine_account_type(self, account_name: str, institution_name: str) -> AccountType:
+        """Détecte intelligemment le type de compte (Courant, Livret, PEA, etc.)."""
+        text = f"{account_name} {institution_name}".lower()
+        if "pea" in text:
+            return AccountType.PEA
+        if any(w in text for w in ["livret", "épargne", "epargne", "savings", "coffre", "ldds", "lep"]):
+            return AccountType.SAVINGS
+        if any(w in text for w in ["crypto", "btc", "eth"]):
+            return AccountType.CRYPTO
+        if any(w in text for w in ["cto", "titres", "trading"]):
+            return AccountType.CTO
+        if any(w in text for w in ["pee", "pero", "cardif", "retraite"]):
+            return AccountType.PEE
+        return AccountType.CHECKING
+
+    def _get_or_create_account(
+        self,
+        session: Session,
+        institution_name: str,
+        account_name: str,
+        initial_balance: float = 0.0,
+        iban: Optional[str] = None,
+        currency: str = "EUR",
+        account_type: Optional[AccountType] = None,
+    ) -> Account:
+        """
+        Recherche un compte existant ou en crée un nouveau automatiquement
+        avec solde, devise, couleur et notes pré-remplis.
+        """
+        accounts = session.exec(select(Account)).all()
+        inst_clean = institution_name.strip()
+        expected_type = account_type or self._determine_account_type(account_name, inst_clean)
+
+        # 1. Vérifier si un compte est déjà mappé avec cet IBAN
+        if iban:
+            existing_mapping = session.exec(
+                select(BankAccountMapping).where(BankAccountMapping.iban == iban)
+            ).first()
+            if existing_mapping:
+                acc = session.get(Account, existing_mapping.patrimon_account_id)
+                if acc:
+                    if initial_balance is not None and initial_balance > 0:
+                        acc.cash_balance = round(initial_balance, 2)
+                        acc.updated_at = datetime.now(timezone.utc)
+                        session.add(acc)
+                    return acc
+
+        # 2. Chercher par correspondance de nom d'établissement et de type
+        matched = None
+        for a in accounts:
+            a_inst = (a.institution or "").lower()
+            a_name = (a.name or "").lower()
+            target_inst = inst_clean.lower()
+            target_name = account_name.lower()
+
+            if target_inst in a_inst or target_inst in a_name:
+                if a.account_type == expected_type:
+                    matched = a
+                    break
+                # Correspondance par mots clés
+                if expected_type == AccountType.CHECKING and any(w in a_name for w in ["courant", "checking", "principal"]):
+                    matched = a
+                    break
+                elif expected_type == AccountType.SAVINGS and any(w in a_name for w in ["livret", "épargne", "epargne", "coffre"]):
+                    matched = a
+                    break
+
+        if matched:
+            if initial_balance is not None:
+                matched.cash_balance = round(initial_balance, 2)
+                matched.updated_at = datetime.now(timezone.utc)
+                session.add(matched)
+                session.commit()
+                session.refresh(matched)
+            return matched
+
+        # 3. Création automatique du nouveau compte
+        display_name = account_name.strip()
+        if inst_clean.lower() not in display_name.lower():
+            display_name = f"{inst_clean} - {display_name}"
+
+        color = self._determine_account_color(inst_clean)
+        new_acc = Account(
+            name=display_name,
+            institution=inst_clean,
+            account_type=expected_type,
+            cash_balance=round(initial_balance or 0.0, 2),
+            currency=currency or "EUR",
+            color=color,
+            notes=f"Compte créé automatiquement via Open Banking DSP2{f' • IBAN: {iban}' if iban else ''}",
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        session.add(new_acc)
+        session.commit()
+        session.refresh(new_acc)
+
+        logger.info(f"Nouveau compte PatriMon auto-créé : {new_acc.name} ({new_acc.cash_balance} {currency})")
+        return new_acc
+
     # ────────────────────── Échange du Code contre Session ──────────────────────
 
     async def exchange_code_for_session(
@@ -371,7 +522,7 @@ class OpenBankingService:
         code: str,
         state: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Échange le code d'autorisation retourné par la banque contre une session active."""
+        """Échange le code d'autorisation retourné par la banque contre une session active et auto-crée les comptes."""
         if not code:
             raise ValueError("Code d'autorisation manquant")
 
@@ -408,42 +559,144 @@ class OpenBankingService:
             if resp.status_code not in (200, 201):
                 raise ValueError(f"Erreur validation session Enable Banking : {resp.text}")
 
-            session_data = resp.json()
+            session_data = resp.json() or {}
             session_id = session_data.get("session_id", "")
-            raw_accounts = session_data.get("accounts", [])
+            raw_accounts = session_data.get("accounts") or []
 
             conn.agreement_id = session_id
             conn.status = "LINKED"
-            conn.account_ids = json.dumps([a.get("uid") or a.get("account_id", {}).get("iban", "") for a in raw_accounts])
+
+            # Sauvegarde propre et sécurisée des UIDs
+            saved_uids = []
+            for a in raw_accounts:
+                if isinstance(a, str):
+                    saved_uids.append(a)
+                elif isinstance(a, dict):
+                    u = a.get("uid")
+                    acc_val = a.get("account_id")
+                    if not u and isinstance(acc_val, dict):
+                        u = acc_val.get("iban") or acc_val.get("bban")
+                    elif not u and isinstance(acc_val, str):
+                        u = acc_val
+                    if u:
+                        saved_uids.append(str(u))
+
+            conn.account_ids = json.dumps(saved_uids)
             conn.last_synced_at = datetime.now(timezone.utc)
             session.add(conn)
 
-            # Créer les liaisons de comptes
+            # Auto-création et liaison des comptes bancaires
             mapped_count = 0
-            patrimon_accounts = session.exec(select(Account)).all()
+            created_accounts_names = []
 
-            for ext_acc in raw_accounts:
-                acc_uid = ext_acc.get("uid") or ext_acc.get("account_id", {}).get("iban", f"acc_{mapped_count}")
-                iban = ext_acc.get("account_id", {}).get("iban", "")
-                acc_name = ext_acc.get("name") or f"Compte {conn.institution_name}"
+            for idx, ext_acc in enumerate(raw_accounts):
+                # Extraction 100% robuste de l'acc_uid, iban, nom et devise
+                if isinstance(ext_acc, str):
+                    acc_uid = ext_acc
+                    iban = ""
+                    acc_name = f"Compte {conn.institution_name} {idx + 1}"
+                    currency = "EUR"
+                    balances_raw = []
+                elif isinstance(ext_acc, dict):
+                    acc_uid = ext_acc.get("uid")
+                    acc_id_val = ext_acc.get("account_id")
+                    iban = ""
+                    if isinstance(acc_id_val, dict):
+                        iban = acc_id_val.get("iban") or acc_id_val.get("bban") or acc_id_val.get("other") or ""
+                    elif isinstance(acc_id_val, str):
+                        iban = acc_id_val
+
+                    if not acc_uid:
+                        acc_uid = iban or f"acc_{conn.id}_{idx + 1}"
+
+                    acc_name = (
+                        ext_acc.get("name")
+                        or ext_acc.get("title")
+                        or ext_acc.get("product")
+                        or ext_acc.get("details")
+                        or f"Compte {conn.institution_name} {idx + 1}"
+                    )
+                    currency = ext_acc.get("currency") or "EUR"
+                    balances_raw = ext_acc.get("balances")
+                    if balances_raw is None:
+                        balances_raw = ext_acc.get("balance")
+                else:
+                    continue
 
                 # Détecter balance initiale
-                initial_balance = None
-                balances = ext_acc.get("balances", [])
-                if balances:
-                    for b in balances:
-                        if "amount" in b.get("balance_amount", {}):
-                            initial_balance = float(b["balance_amount"]["amount"])
-                            break
+                initial_balance = 0.0
+                balance_list = []
+                if isinstance(balances_raw, list):
+                    balance_list = balances_raw
+                elif isinstance(balances_raw, dict):
+                    balance_list = [balances_raw]
 
-                # Trouver le compte PatriMon le plus approprié
-                target_acc = None
-                for pa in patrimon_accounts:
-                    if conn.institution_name.lower() in pa.name.lower() or conn.institution_name.lower() in (pa.institution or "").lower():
-                        target_acc = pa
-                        break
+                for b in balance_list:
+                    if isinstance(b, dict):
+                        b_amount = b.get("balance_amount")
+                        if isinstance(b_amount, dict) and "amount" in b_amount:
+                            try:
+                                initial_balance = float(b_amount["amount"])
+                                if b_amount.get("currency"):
+                                    currency = b_amount["currency"]
+                                break
+                            except (ValueError, TypeError):
+                                pass
+                        elif "amount" in b:
+                            try:
+                                initial_balance = float(b["amount"])
+                                if b.get("currency"):
+                                    currency = b["currency"]
+                                break
+                            except (ValueError, TypeError):
+                                pass
 
-                if target_acc:
+                # Si aucun solde n'a été fourni dans la session, interroger /accounts/{acc_uid}/balances
+                if initial_balance == 0.0 and acc_uid:
+                    try:
+                        b_resp = await client.get(
+                            f"{ENABLE_BANKING_API_BASE}/accounts/{acc_uid}/balances",
+                            headers=headers,
+                        )
+                        if b_resp.status_code == 200:
+                            b_json = b_resp.json() or {}
+                            direct_b = b_json.get("balances") or b_json.get("balance") or []
+                            if isinstance(direct_b, dict):
+                                direct_b = [direct_b]
+                            if isinstance(direct_b, list) and direct_b:
+                                for db in direct_b:
+                                    if isinstance(db, dict):
+                                        amt_info = db.get("balance_amount")
+                                        if isinstance(amt_info, dict) and "amount" in amt_info:
+                                            initial_balance = float(amt_info["amount"])
+                                            break
+                                        elif "amount" in db:
+                                            initial_balance = float(db["amount"])
+                                            break
+                    except Exception as e:
+                        logger.warning(f"Impossible de récupérer le solde direct pour {acc_uid}: {e}")
+
+                # Trouver ou créer automatiquement le compte
+                target_acc = self._get_or_create_account(
+                    session=session,
+                    institution_name=conn.institution_name,
+                    account_name=acc_name,
+                    initial_balance=initial_balance,
+                    iban=iban,
+                    currency=currency,
+                )
+
+                created_accounts_names.append(target_acc.name)
+
+                # Créer ou mettre à jour le mapping
+                mapping = session.exec(
+                    select(BankAccountMapping).where(
+                        BankAccountMapping.connection_id == conn.id,
+                        BankAccountMapping.external_account_id == str(acc_uid)
+                    )
+                ).first()
+
+                if not mapping:
                     mapping = BankAccountMapping(
                         connection_id=conn.id,
                         external_account_id=str(acc_uid),
@@ -454,79 +707,468 @@ class OpenBankingService:
                         last_synced_at=datetime.now(timezone.utc),
                     )
                     session.add(mapping)
-                    if initial_balance is not None:
-                        target_acc.cash_balance = initial_balance
-                        session.add(target_acc)
-                    mapped_count += 1
+                else:
+                    mapping.last_balance = initial_balance
+                    mapping.last_synced_at = datetime.now(timezone.utc)
+                    session.add(mapping)
+
+                target_acc.cash_balance = initial_balance
+                target_acc.updated_at = datetime.now(timezone.utc)
+                session.add(target_acc)
+                mapped_count += 1
+
+            # Si la banque n'a listé aucun compte dans la session, créer un compte par défaut
+            if mapped_count == 0:
+                default_acc = self._get_or_create_account(
+                    session=session,
+                    institution_name=conn.institution_name,
+                    account_name=f"Compte Courant {conn.institution_name}",
+                    initial_balance=0.0,
+                    currency="EUR",
+                )
+                mapping = BankAccountMapping(
+                    connection_id=conn.id,
+                    external_account_id=f"{conn.institution_id}_main",
+                    patrimon_account_id=default_acc.id,
+                    name=default_acc.name,
+                    last_balance=0.0,
+                    last_synced_at=datetime.now(timezone.utc),
+                )
+                session.add(mapping)
+                created_accounts_names.append(default_acc.name)
+                mapped_count += 1
 
             session.commit()
             return {
                 "success": True,
-                "message": f"Connexion bancaire validée avec succès pour {conn.institution_name} !",
+                "message": f"Banque {conn.institution_name} connectée ! {mapped_count} compte(s) créé(s) et synchronisé(s).",
                 "accounts_mapped": mapped_count,
+                "accounts": created_accounts_names,
             }
 
     # ────────────────────── Synchronisation des Soldes ──────────────────────
 
     def _auto_map_simulated_accounts(self, session: Session, conn: BankConnection):
-        """Associe automatiquement les comptes simulés aux comptes PatriMon existants."""
-        accounts = session.exec(select(Account)).all()
+        """Associe ou crée automatiquement les comptes et leurs soldes pour la banque simulée."""
+        inst_name = conn.institution_name
+        inst_upper = conn.institution_id.upper()
 
-        if "BOURSO" in conn.institution_id.upper():
-            c_courant = next((a for a in accounts if "Bourso" in a.name and a.account_type == AccountType.CHECKING), None)
-            c_pea = next((a for a in accounts if "Bourso" in a.name and a.account_type == AccountType.PEA), None)
+        simulated_accounts_data = []
 
-            if c_courant:
+        if "BOURSO" in inst_upper:
+            simulated_accounts_data = [
+                {
+                    "ext_id": f"{conn.institution_id}_checking",
+                    "name": "Compte Courant",
+                    "type": AccountType.CHECKING,
+                    "iban": "FR76 3000 4000 1234 5678 901",
+                    "balance": 2450.00,
+                },
+                {
+                    "ext_id": f"{conn.institution_id}_pea_cash",
+                    "name": "Compte Espèces PEA",
+                    "type": AccountType.PEA,
+                    "iban": "FR76 3000 4000 9876 5432 109",
+                    "balance": 350.50,
+                },
+            ]
+        elif "BNP" in inst_upper:
+            simulated_accounts_data = [
+                {
+                    "ext_id": f"{conn.institution_id}_checking",
+                    "name": "Compte Courant",
+                    "type": AccountType.CHECKING,
+                    "iban": "FR76 3000 2000 1122 3344 556",
+                    "balance": 1120.50,
+                },
+                {
+                    "ext_id": f"{conn.institution_id}_savings",
+                    "name": "Livret A",
+                    "type": AccountType.SAVINGS,
+                    "iban": "FR76 3000 2000 9988 7766 112",
+                    "balance": 12500.00,
+                },
+            ]
+        elif "REVOLUT" in inst_upper:
+            simulated_accounts_data = [
+                {
+                    "ext_id": f"{conn.institution_id}_main",
+                    "name": "Compte Principal",
+                    "type": AccountType.CHECKING,
+                    "iban": "LT34 3250 0000 9988 7766 55",
+                    "balance": 540.20,
+                },
+                {
+                    "ext_id": f"{conn.institution_id}_vault",
+                    "name": "Coffre Épargne",
+                    "type": AccountType.SAVINGS,
+                    "iban": "LT34 3250 0000 1122 3344 55",
+                    "balance": 1800.00,
+                },
+            ]
+        elif "BBVA" in inst_upper:
+            simulated_accounts_data = [
+                {
+                    "ext_id": f"{conn.institution_id}_checking",
+                    "name": "Compte Courant",
+                    "type": AccountType.CHECKING,
+                    "iban": "FR76 1820 6000 0111 2223 344",
+                    "balance": 1650.00,
+                }
+            ]
+        elif "MOCK" in inst_upper or "TEST" in inst_upper:
+            simulated_accounts_data = [
+                {
+                    "ext_id": f"{conn.institution_id}_checking",
+                    "name": "Compte Test Démo",
+                    "type": AccountType.CHECKING,
+                    "iban": "FR76 9999 9999 0000 1111 222",
+                    "balance": 3200.00,
+                }
+            ]
+        else:
+            simulated_accounts_data = [
+                {
+                    "ext_id": f"{conn.institution_id}_main",
+                    "name": "Compte Courant",
+                    "type": AccountType.CHECKING,
+                    "iban": "FR76 1000 2000 3000 4000 555",
+                    "balance": 1500.00,
+                }
+            ]
+
+        for s_data in simulated_accounts_data:
+            target_acc = self._get_or_create_account(
+                session=session,
+                institution_name=inst_name,
+                account_name=s_data["name"],
+                initial_balance=s_data["balance"],
+                iban=s_data["iban"],
+                account_type=s_data["type"],
+            )
+
+            mapping = session.exec(
+                select(BankAccountMapping).where(
+                    BankAccountMapping.connection_id == conn.id,
+                    BankAccountMapping.external_account_id == s_data["ext_id"],
+                )
+            ).first()
+
+            if not mapping:
                 session.add(BankAccountMapping(
                     connection_id=conn.id,
-                    external_account_id=f"{conn.institution_id}_checking",
-                    patrimon_account_id=c_courant.id,
-                    iban="FR76 3000 4000 1234 5678 901",
-                    name="Compte Bancaire BoursoBank",
-                    last_balance=c_courant.cash_balance,
+                    external_account_id=s_data["ext_id"],
+                    patrimon_account_id=target_acc.id,
+                    iban=s_data["iban"],
+                    name=s_data["name"],
+                    last_balance=s_data["balance"],
                     last_synced_at=datetime.now(timezone.utc),
                 ))
-            if c_pea:
-                session.add(BankAccountMapping(
-                    connection_id=conn.id,
-                    external_account_id=f"{conn.institution_id}_pea_cash",
-                    patrimon_account_id=c_pea.id,
-                    iban="FR76 3000 4000 9876 5432 109",
-                    name="Compte Espèces PEA",
-                    last_balance=c_pea.cash_balance,
-                    last_synced_at=datetime.now(timezone.utc),
-                ))
+            else:
+                mapping.last_balance = s_data["balance"]
+                mapping.last_synced_at = datetime.now(timezone.utc)
+                session.add(mapping)
 
-        elif "BNP" in conn.institution_id.upper():
-            c_livret = next((a for a in accounts if "BNP" in a.name and a.account_type == AccountType.SAVINGS), None)
-            if c_livret:
-                session.add(BankAccountMapping(
-                    connection_id=conn.id,
-                    external_account_id=f"{conn.institution_id}_savings",
-                    patrimon_account_id=c_livret.id,
-                    iban="FR76 3000 2000 1122 3344 556",
-                    name="Livret A BNP Paribas",
-                    last_balance=c_livret.cash_balance,
-                    last_synced_at=datetime.now(timezone.utc),
-                ))
-
-        elif "REVOLUT" in conn.institution_id.upper():
-            c_revolut = next((a for a in accounts if "Revolut" in a.name), None)
-            if c_revolut:
-                session.add(BankAccountMapping(
-                    connection_id=conn.id,
-                    external_account_id=f"{conn.institution_id}_main",
-                    patrimon_account_id=c_revolut.id,
-                    iban="LT34 3250 0000 9988 7766 55",
-                    name="Compte Principal Revolut",
-                    last_balance=c_revolut.cash_balance,
-                    last_synced_at=datetime.now(timezone.utc),
-                ))
+            target_acc.cash_balance = s_data["balance"]
+            session.add(target_acc)
 
         session.commit()
 
+    def _get_simulated_transactions(
+        self, 
+        account: Account, 
+        conn: BankConnection, 
+        mapping: BankAccountMapping
+    ) -> List[Dict[str, Any]]:
+        """Génère des transactions bancaires simulées réalistes avec libellés et montants adaptés."""
+        inst = (conn.institution_name or "").upper()
+        acc_name = (account.name or "").upper()
+        today = datetime.now(timezone.utc).date()
+
+        sim_txs = []
+
+        if "BOURSO" in inst:
+            if "PEA" in acc_name:
+                sim_txs = [
+                    {
+                        "external_id": f"sim_bourso_pea_cw8_{account.id}",
+                        "amount": -495.50,
+                        "currency": "EUR",
+                        "date": (today - timedelta(days=5)).isoformat(),
+                        "raw_label": "ACHAT TITRE AMUNDI MSCI WORLD UCITS ETF (CW8.PA)",
+                        "symbol": "CW8.PA",
+                        "quantity": 1.0,
+                        "unit_price": 495.50,
+                    },
+                    {
+                        "external_id": f"sim_bourso_pea_div_{account.id}",
+                        "amount": 38.40,
+                        "currency": "EUR",
+                        "date": (today - timedelta(days=12)).isoformat(),
+                        "raw_label": "DIVIDENDE TRIMESTRIEL AMUNDI MSCI WORLD",
+                    },
+                ]
+            else:
+                sim_txs = [
+                    {
+                        "external_id": f"sim_bourso_sal_{account.id}",
+                        "amount": 3250.00,
+                        "currency": "EUR",
+                        "date": (today - timedelta(days=3)).isoformat(),
+                        "raw_label": "VIR SEPA SCHNEIDER ELECTRIC SALAIRE MENSUEL",
+                    },
+                    {
+                        "external_id": f"sim_bourso_carr_{account.id}",
+                        "amount": -64.20,
+                        "currency": "EUR",
+                        "date": (today - timedelta(days=2)).isoformat(),
+                        "raw_label": "PAIEMENT CARTE CARREFOUR MARKET PARIS 75011",
+                    },
+                    {
+                        "external_id": f"sim_bourso_edf_{account.id}",
+                        "amount": -89.40,
+                        "currency": "EUR",
+                        "date": (today - timedelta(days=4)).isoformat(),
+                        "raw_label": "PRLV SEPA TOTALENERGIES ELECTRICITE & GAZ",
+                    },
+                    {
+                        "external_id": f"sim_bourso_spot_{account.id}",
+                        "amount": -10.99,
+                        "currency": "EUR",
+                        "date": (today - timedelta(days=1)).isoformat(),
+                        "raw_label": "PRLV SPOTIFY ABONNEMENT MENSUEL",
+                    },
+                    {
+                        "external_id": f"sim_bourso_sncf_{account.id}",
+                        "amount": -54.00,
+                        "currency": "EUR",
+                        "date": (today - timedelta(days=6)).isoformat(),
+                        "raw_label": "PAIEMENT CARTE SNCF VOYAGEURS TGV",
+                    },
+                ]
+        elif "BNP" in inst:
+            if "LIVRET" in acc_name or "SAVINGS" in acc_name:
+                sim_txs = [
+                    {
+                        "external_id": f"sim_bnp_liv_1_{account.id}",
+                        "amount": 300.00,
+                        "currency": "EUR",
+                        "date": (today - timedelta(days=4)).isoformat(),
+                        "raw_label": "VIREMENT PERIODIQUE RECU COMPTE COURANT",
+                    },
+                ]
+            else:
+                sim_txs = [
+                    {
+                        "external_id": f"sim_bnp_mut_{account.id}",
+                        "amount": -42.80,
+                        "currency": "EUR",
+                        "date": (today - timedelta(days=3)).isoformat(),
+                        "raw_label": "PRLV MUTUELLE ALAN SANTE",
+                    },
+                    {
+                        "external_id": f"sim_bnp_vir_ep_{account.id}",
+                        "amount": -300.00,
+                        "currency": "EUR",
+                        "date": (today - timedelta(days=4)).isoformat(),
+                        "raw_label": "VIREMENT PERIODIQUE VERS LIVRET A",
+                    },
+                    {
+                        "external_id": f"sim_bnp_phar_{account.id}",
+                        "amount": -18.50,
+                        "currency": "EUR",
+                        "date": (today - timedelta(days=5)).isoformat(),
+                        "raw_label": "PAIEMENT CARTE PHARMACIE CENTRALE",
+                    },
+                ]
+        elif "REVOLUT" in inst:
+            sim_txs = [
+                {
+                    "external_id": f"sim_revo_resto_{account.id}",
+                    "amount": -26.50,
+                    "currency": "EUR",
+                    "date": (today - timedelta(days=1)).isoformat(),
+                    "raw_label": "PAIEMENT CB RESTAURANT LE BISTROT DU COIN",
+                },
+                {
+                    "external_id": f"sim_revo_netf_{account.id}",
+                    "amount": -13.49,
+                    "currency": "EUR",
+                    "date": (today - timedelta(days=7)).isoformat(),
+                    "raw_label": "PRLV NETFLIX COM MENSUEL",
+                },
+                {
+                    "external_id": f"sim_revo_rech_{account.id}",
+                    "amount": 150.00,
+                    "currency": "EUR",
+                    "date": (today - timedelta(days=8)).isoformat(),
+                    "raw_label": "RECHARGE DU COMPTE REVOLUT PAR CARTE",
+                },
+            ]
+        else:
+            sim_txs = [
+                {
+                    "external_id": f"sim_gen_sal_{account.id}",
+                    "amount": 2500.00,
+                    "currency": "EUR",
+                    "date": (today - timedelta(days=3)).isoformat(),
+                    "raw_label": "VIREMENT SALAIRE",
+                },
+                {
+                    "external_id": f"sim_gen_cours_{account.id}",
+                    "amount": -45.00,
+                    "currency": "EUR",
+                    "date": (today - timedelta(days=2)).isoformat(),
+                    "raw_label": "PAIEMENT CARTE SUPERMARCHE",
+                },
+            ]
+
+        return sim_txs
+
+    async def sync_all_transactions(self, session: Session) -> Dict[str, Any]:
+        """
+        Synchronise automatiquement l'historique des transactions pour tous les comptes liés.
+        Tous les champs (libellé, catégorie, type, montant, devise, notes) sont remplis automatiquement.
+        """
+        from datetime import date
+        mappings = session.exec(select(BankAccountMapping)).all()
+        synced_accounts = 0
+        new_transactions_count = 0
+
+        jwt_token = None
+        if not self.is_simulation_mode and (self.application_id and self.private_key):
+            try:
+                jwt_token = self._generate_jwt()
+            except Exception as e:
+                logger.warning(f"JWT Enable Banking indisponible pour synchro transactions: {e}")
+
+        for m in mappings:
+            acc = session.get(Account, m.patrimon_account_id)
+            if not acc:
+                continue
+
+            conn = session.get(BankConnection, m.connection_id)
+            raw_txs_to_process = []
+
+            if conn and conn.is_simulation:
+                raw_txs_to_process = self._get_simulated_transactions(acc, conn, m)
+            elif not self.is_simulation_mode and conn and not conn.is_simulation and jwt_token:
+                try:
+                    headers = {"Authorization": f"Bearer {jwt_token}"}
+                    async with httpx.AsyncClient(timeout=20.0) as client:
+                        resp = await client.get(
+                            f"{ENABLE_BANKING_API_BASE}/accounts/{m.external_account_id}/transactions",
+                            headers=headers,
+                        )
+                        if resp.status_code == 200:
+                            data = resp.json() or {}
+                            tx_list = data.get("transactions") or []
+                            for t in tx_list:
+                                ext_id = t.get("entry_reference") or t.get("transaction_id")
+                                if not ext_id:
+                                    ext_id = f"eb_{t.get('booking_date')}_{abs(float(t.get('transaction_amount', {}).get('amount', 0)))}"
+                                amt_dict = t.get("transaction_amount") or {}
+                                amt_val = float(amt_dict.get("amount", 0.0))
+                                cur = amt_dict.get("currency") or "EUR"
+                                dt_str = t.get("booking_date") or t.get("value_date") or str(date.today())
+
+                                indicator = (t.get("credit_debit_indicator") or "").upper()
+                                if indicator == "DBIT" and amt_val > 0:
+                                    amt_val = -amt_val
+                                elif indicator == "CRDT" and amt_val < 0:
+                                    amt_val = abs(amt_val)
+
+                                rem_info = t.get("remittance_information")
+                                rem_str = " ".join(rem_info) if isinstance(rem_info, list) else str(rem_info or "")
+                                creditor = (t.get("creditor") or {}).get("name", "")
+                                debtor = (t.get("debtor") or {}).get("name", "")
+
+                                # Préférer le nom explicite du commerçant / tiers si disponible
+                                party_name = (debtor if amt_val > 0 and debtor else creditor) or rem_str or "Opération bancaire"
+
+                                raw_txs_to_process.append({
+                                    "external_id": str(ext_id),
+                                    "amount": amt_val,
+                                    "currency": cur,
+                                    "date": dt_str,
+                                    "raw_label": party_name,
+                                    "creditor": creditor,
+                                    "debtor": debtor,
+                                })
+                except Exception as e:
+                    logger.warning(f"Erreur synchro transactions Enable Banking ({m.external_account_id}): {e}")
+
+            # Traitement et enrichissement automatique de chaque transaction
+            for item in raw_txs_to_process:
+                ext_id = item["external_id"]
+                # Vérifier si déjà enregistrée (déduplication)
+                existing = session.exec(
+                    select(Transaction)
+                    .where(Transaction.account_id == acc.id)
+                    .where(Transaction.external_id == ext_id)
+                ).first()
+                if existing:
+                    continue
+
+                raw_amt = float(item["amount"])
+                abs_amount = round(abs(raw_amt), 2)
+                raw_label = item.get("raw_label", "")
+
+                # Date
+                dt_raw = item.get("date")
+                if isinstance(dt_raw, str):
+                    try:
+                        tx_date_val = datetime.strptime(dt_raw[:10], "%Y-%m-%d").date()
+                    except Exception:
+                        tx_date_val = date.today()
+                else:
+                    tx_date_val = date.today()
+
+                # Déduction automatique du type et de la catégorie
+                tx_type, auto_cat = transaction_enricher.deduce_type_and_category(raw_amt, raw_label)
+                clean_name = transaction_enricher.clean_label(raw_label)
+
+                curr = item.get("currency") or "EUR"
+                from app.services.market_service import market_service
+                rate = market_service.get_eur_rate(curr)
+                amt_eur = round(abs_amount * rate, 2)
+
+                unit_price = item.get("unit_price")
+                unit_price_eur = round(float(unit_price) * rate, 4) if unit_price else None
+
+                new_tx = Transaction(
+                    account_id=acc.id,
+                    type=tx_type,
+                    transaction_date=tx_date_val,
+                    symbol=item.get("symbol"),
+                    name=clean_name or raw_label,
+                    quantity=item.get("quantity"),
+                    unit_price=unit_price,
+                    unit_price_eur=unit_price_eur,
+                    amount=abs_amount,
+                    amount_eur=amt_eur,
+                    fees=0.0,
+                    fees_eur=0.0,
+                    currency=curr,
+                    category=auto_cat,
+                    external_id=ext_id,
+                    notes=f"Synchronisé automatiquement via Open Banking{f' ({raw_label})' if clean_name != raw_label else ''}",
+                    created_at=datetime.now(timezone.utc),
+                )
+                session.add(new_tx)
+                new_transactions_count += 1
+
+            synced_accounts += 1
+
+        session.commit()
+        return {
+            "success": True,
+            "accounts_processed": synced_accounts,
+            "new_transactions_imported": new_transactions_count,
+        }
+
     async def sync_all_balances(self, session: Session) -> Dict[str, Any]:
-        """Synchronise les soldes espèces de tous les comptes bancaires liés."""
+        """Synchronise les soldes espèces et l'historique des transactions de tous les comptes bancaires liés."""
         connections = session.exec(select(BankConnection)).all()
         mappings = session.exec(select(BankAccountMapping)).all()
 
@@ -561,10 +1203,18 @@ class OpenBankingService:
                             headers=headers,
                         )
                         if resp.status_code == 200:
-                            b_data = resp.json().get("balances", [])
-                            if b_data:
-                                amount_val = float(b_data[0]["balance_amount"]["amount"])
-                                new_balance = round(amount_val, 2)
+                            b_json = resp.json() or {}
+                            b_data = b_json.get("balances") or b_json.get("balance") or []
+                            if isinstance(b_data, dict):
+                                b_data = [b_data]
+                            if isinstance(b_data, list) and b_data:
+                                first_b = b_data[0]
+                                if isinstance(first_b, dict):
+                                    amt_obj = first_b.get("balance_amount")
+                                    if isinstance(amt_obj, dict) and "amount" in amt_obj:
+                                        new_balance = round(float(amt_obj["amount"]), 2)
+                                    elif "amount" in first_b:
+                                        new_balance = round(float(first_b["amount"]), 2)
                 except Exception as e:
                     logger.warning(f"Erreur synchro solde Enable Banking {m.external_account_id}: {e}")
 
@@ -587,11 +1237,21 @@ class OpenBankingService:
 
         session.commit()
 
+        # 2. Synchronisation conjointe automatique des transactions
+        tx_stats = {"new_transactions_imported": 0}
+        try:
+            tx_stats = await self.sync_all_transactions(session)
+        except Exception as e:
+            logger.warning(f"Erreur lors de la synchronisation conjointe des transactions: {e}")
+
+        new_tx_count = tx_stats.get("new_transactions_imported", 0)
+
         return {
             "success": True,
-            "message": f"{synced_count} compte(s) bancaire(s) synchronisé(s) avec succès.",
+            "message": f"{synced_count} compte(s) synchronisé(s) et {new_tx_count} nouvelle(s) transaction(s) importée(s) et catégorisée(s).",
             "synced_accounts_count": synced_count,
             "total_balance_synced": round(total_balance_updated, 2),
+            "new_transactions_imported": new_tx_count,
             "updated_accounts": updated_list,
             "synced_at": datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M:%S"),
         }

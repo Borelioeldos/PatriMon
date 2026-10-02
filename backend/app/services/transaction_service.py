@@ -162,6 +162,19 @@ class TransactionService:
                 account.cash_balance = round(account.cash_balance + (amount_eur / market_service.get_eur_rate(account.currency)), 2)
                 session.add(account)
 
+        # Catégorisation et enrichissement automatique si non spécifié
+        category = tx_in.category
+        if not category:
+            from app.services.transaction_enricher import transaction_enricher
+            enriched_fields = transaction_enricher.enrich_transaction_data({
+                "type": tx_in.type.value if hasattr(tx_in.type, "value") else str(tx_in.type),
+                "symbol": symbol,
+                "name": name,
+                "notes": tx_in.notes,
+                "amount": amount,
+            })
+            category = enriched_fields.get("category")
+
         # Création de l'objet transaction
         transaction = Transaction(
             account_id=account.id,
@@ -178,6 +191,8 @@ class TransactionService:
             fees=fees,
             fees_eur=fees_eur,
             currency=currency,
+            category=category,
+            external_id=tx_in.external_id,
             realized_gain_eur=realized_gain_eur,
             notes=tx_in.notes,
         )

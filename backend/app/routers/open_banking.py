@@ -53,9 +53,28 @@ def update_config(req: ConfigRequest):
     }
 
 
+@router.get("/keys")
+def get_rsa_keys():
+    """Retourne la clé publique statique permanente actuelle."""
+    pub_key = open_banking_service.get_public_key()
+    return {
+        "has_keys": bool(open_banking_service.private_key),
+        "public_key": pub_key,
+        "is_static": True,
+    }
+
+
 @router.post("/generate-keys")
-def generate_rsa_key_pair():
-    """Génère une paire de clés RSA (2048-bit) pour Enable Banking."""
+def generate_rsa_key_pair(force: bool = False):
+    """Retourne la clé statique existante ou en génère une nouvelle si explicitement forcé."""
+    if open_banking_service.private_key and not force:
+        return {
+            "private_key": open_banking_service.private_key,
+            "public_key": open_banking_service.get_public_key(),
+            "message": "Clé statique permanente existante récupérée.",
+            "is_static": True,
+        }
+
     private_key = rsa.generate_private_key(
         public_exponent=65537,
         key_size=2048,
@@ -71,10 +90,17 @@ def generate_rsa_key_pair():
         format=serialization.PublicFormat.SubjectPublicKeyInfo,
     ).decode("utf-8")
 
+    open_banking_service.set_config(
+        application_id=open_banking_service.application_id,
+        private_key=private_pem,
+        simulation_mode=open_banking_service.is_simulation_mode,
+    )
+
     return {
         "private_key": private_pem,
         "public_key": public_pem,
-        "message": "Copiez la clé publique ci-dessous et collez-la dans votre console Enable Banking.",
+        "message": "Nouvelle paire de clés statique générée et enregistrée.",
+        "is_static": True,
     }
 
 
@@ -120,12 +146,54 @@ async def exchange_session_code(
 
 @router.post("/sync")
 async def sync_balances(session: Session = Depends(get_session)):
-    """Synchronise les soldes de tous les comptes bancaires connectés."""
+    """Synchronise les soldes et transactions de tous les comptes bancaires connectés."""
     try:
         res = await open_banking_service.sync_all_balances(session)
         return res
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur de synchronisation : {e}")
+
+
+@router.post("/sync-transactions")
+async def sync_transactions(session: Session = Depends(get_session)):
+    """Synchronise spécifiquement l'historique des transactions bancaires."""
+    try:
+        res = await open_banking_service.sync_all_transactions(session)
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur de synchronisation des transactions : {e}")
+
+
+# ────────────────────── Planification Automatique (Scheduler) ──────────────────────
+
+class SchedulerConfigRequest(BaseModel):
+    enabled: Optional[bool] = None
+    interval_minutes: Optional[int] = None
+
+
+@router.get("/scheduler")
+def get_scheduler_status():
+    """Retourne l'état actuel de la synchronisation automatique en tâche de fond."""
+    from app.services.sync_scheduler_service import sync_scheduler_service
+    return sync_scheduler_service.get_status()
+
+
+@router.post("/scheduler/config")
+def update_scheduler_config(req: SchedulerConfigRequest):
+    """Met à jour l'intervalle et l'activation de la synchronisation automatique."""
+    from app.services.sync_scheduler_service import sync_scheduler_service
+    return sync_scheduler_service.update_config(
+        enabled=req.enabled,
+        interval_minutes=req.interval_minutes
+    )
+
+
+@router.post("/scheduler/trigger")
+async def trigger_scheduler_sync():
+    """Déclenche immédiatement un cycle de synchronisation automatique complète."""
+    from app.services.sync_scheduler_service import sync_scheduler_service
+    res = await sync_scheduler_service.execute_sync_now()
+    return res
 
 
 @router.delete("/connection/{connection_id}")

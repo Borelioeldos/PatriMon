@@ -35,7 +35,7 @@ Suivie_Patrimoine/
 │   │   │   ├── market.py            # Recherche de tickers et cotation unitaire
 │   │   │   ├── transactions.py      # CRUD transactions, calcul PRU, stats de flux (Phase 2)
 │   │   │   ├── pee.py               # Phase 3 : Import relevés PDF/CSV BNP Épargne Entreprise & PERO
-│   │   │   └── open_banking.py      # Phase 3 : Synchro bancaire DSP2 GoCardless & Mode Démo
+│   │   │   └── open_banking.py      # Phase 3 : Synchro bancaire DSP2 Enable Banking & Mode Démo
 │   │   └── services/
 │   │       ├── market_service.py    # Service yfinance avec cache 30s + conversion EUR
 │   │       ├── portfolio_service.py # Agrégation financière, calculs plus-values, snapshots 30j
@@ -43,8 +43,10 @@ Suivie_Patrimoine/
 │   │       ├── performance_service.py # Moteur TWR (Time-Weighted Return) & MWR / TRI (XIRR)
 │   │       ├── benchmark_service.py # Comparateur d'indices (MSCI World, S&P 500, CAC 40, Bitcoin)
 │   │       ├── pee_import_service.py# Phase 3 : Parseur PDF officiel BNP EE (Schneider Electric) & CSV
-│   │       └── open_banking_service.py# Phase 3 : Client API GoCardless DSP2 + simulateur de flux temps réel
-│   ├── requirements.txt             # fastapi, uvicorn, sqlmodel, yfinance, httpx, pypdf, python-multipart
+│   │       └── open_banking_service.py# Phase 3 : Client API Enable Banking DSP2 (JWT RS256) + auto-création comptes
+│   ├── certs/                       # Phase 3 : Paires de clés RSA 2048 statiques permanentes (.pem)
+│   ├── open_banking_config.json     # Configuration locale sécurisée (Application ID, clés statiques)
+│   ├── requirements.txt             # fastapi, uvicorn, sqlmodel, yfinance, httpx, pypdf, pyjwt, cryptography
 │   ├── run.py                       # Lanceur Uvicorn sur 0.0.0.0:8000
 │   └── patrimoines.db               # Base SQLite locale
 ├── frontend/
@@ -109,20 +111,49 @@ Suivie_Patrimoine/
   - `TransactionsList.jsx` : Journal filtrable par type et par compte avec suppression et statuts colorés.
   - `AddTransactionModal.jsx` : Formulaire interactif avec simulation en direct du nouveau PRU et de la plus-value attendue.
 
-### Phase 3 Complète (Automatisation des Flux Externes, DSP2 & BNP PEE/PERO)
-- [x] **Connecteur Open Banking (DSP2 — Enable Banking)** :
-  - Intégration de l'API européenne moderne **Enable Banking** (successeur de Nordigen pour les projets personnels et le self-hosted).
-  - Signature cryptographique locale des requêtes via **JWT RS256** (avec bibliothèque Python `cryptography` et `pyjwt`).
-  - **Générateur intégré de clés RSA (2048 bits) en 1-clic** : permet à l'utilisateur de générer sa clé privée et d'exporter sa clé publique directement vers la console Enable Banking.
-  - **Mode Démo / Simulation instantané** : permet de tester immédiatement la synchronisation des liquidités sans clé API.
-  - Endpoints complets : statut, configuration, catalogue banques françaises, lien de connexion, échange de code session et synchronisation automatique.
-  - Modal frontend dédié `BankSyncModal.jsx` avec suivi des soldes, connexion directe d'établissements et configuration assistée.
+### Phase 3 Complète : Automatisation des Flux Externes, DSP2 (Enable Banking), Synchro Régulière & Auto-Remplissage des Transactions
+
+- [x] **Transition vers l'API Enable Banking (PSD2 / DSP2)** :
+  - Remplacement complet de GoCardless par le standard européen ouvert **Enable Banking**.
+  - Signature locale et souveraine des requêtes HTTP via **JWT asymétrique RS256** (`cryptography` et `pyjwt`).
+  - Prise en charge des contraintes réglementaires européennes DSP2 (durée de validité `valid_until` bridée à 89 jours, formats ASPSP stricts).
+  - Mode Démo / Simulation instantané maintenu pour tester l'UI et les flux sans compte bancaire réel.
+
+- [x] **Clés RSA Statiques & Permanentes (Zéro Clé Dynamique)** :
+  - Paire de clés RSA 2048-bit permanente stockée dans [`backend/certs/enable_banking_public.pem`](file:///c:/Users/Borel/Desktop/Suivie_Patrimoine/backend/certs/enable_banking_public.pem) et [`backend/certs/enable_banking_private.pem`](file:///c:/Users/Borel/Desktop/Suivie_Patrimoine/backend/certs/enable_banking_private.pem).
+  - Protection contre les régénérations intempestives et copie 1-clic dans `BankSyncModal.jsx`.
+
+- [x] **Synchronisation Automatique & Périodique en Tâche de Fond (`sync_scheduler_service.py`)** :
+  - Moteur de planification asynchrone non bloquant intégré au cycle de vie FastAPI (`lifespan`).
+  - Fréquence paramétrable en 1 clic : **1 heure**, **4 heures (recommandé)**, **12 heures**, ou **24 heures**.
+  - Persistance dans [`backend/sync_scheduler_config.json`](file:///c:/Users/Borel/Desktop/Suivie_Patrimoine/backend/sync_scheduler_config.json).
+  - Synchronisation automatique et conjointe :
+    1. Soldes bancaires réels de tous les comptes liés.
+    2. Téléchargement et intégration des nouvelles transactions.
+    3. Actualisation du snapshot de patrimoine journalier (`PortfolioSnapshot`).
+  - Nouvel onglet dédié dans `BankSyncModal.jsx` avec état en temps réel, compte à rebours avant la prochaine exécution, switch d'activation et bouton de déclenchement forcé.
+
+- [x] **Remplissage Automatique & Catégorisation Intelligente des Transactions (`transaction_enricher.py`)** :
+  - **Saisie manuelle assistée (`AddTransactionModal.jsx`)** :
+    - Détection automatique dès la saisie du symbole / ticker (ex: `CW8.PA`, `AAPL`, `BTC-EUR`) : récupération en direct du nom officiel, du cours actuel de marché et de la devise.
+    - Calcul mathématique croisé temps réel : la quantité renseigne le montant total (`quantité × cours + frais`), ou le montant renseigne la quantité suggérée.
+    - Pré-remplissage automatique des catégories et suggestions d'intitulés / notes.
+    - Raccourcis en 1 clic (Presets) pour les flux récurrents : *Salaire Schneider*, *Courses Carrefour*, *EDF / TotalEnergies*, *Abonnements*, *SNCF*, *Virement Épargne*.
+  - **Synchronisation bancaire automatique DSP2** :
+    - Détection du débit/crédit (`credit_debit_indicator`), normalisation du montant et détection de l'opération (`DEPOSIT`, `WITHDRAWAL`, `DIVIDEND`, `BUY`).
+    - Nettoyage automatique des libellés bancaires bruts (suppression des préfixes techniques `PAIEMENT CARTE`, `PRLV SEPA`, dates, codes postaux) pour extraire le vrai nom du tiers / commerçant.
+    - Classification automatique parmi 12 catégories intelligentes (*Alimentation & Courses*, *Logement & Énergie*, *Revenus & Salaires*, *Investissement & Épargne*, *Abonnements & Médias*, etc.).
+    - Déduplication infaillible via `external_id` : aucun risque de doublon lors des synchronisations régulières.
+  - **Journal des flux (`TransactionsList.jsx`)** :
+    - Colonne et badges de catégories colorés.
+    - Filtre par catégorie dans la barre d'outils.
+    - Badge `DSP2` identifiant les opérations synchronisées automatiquement.
+
 - [x] **Automatisation BNP Épargne Entreprise (PEE & PERO Cardif Retraite)** :
-  - Parseur PDF officiel et CSV (`pee_import_service.py`) calibré et validé directement sur le relevé de situation Schneider Electric France / BNP Paribas.
-  - Détection automatique et séparation propre entre le **PEE** (Schneider Actionnariat, HSBC EE Actions Monde, Schneider Dynamique) et le **PERO Retraite** (Cardif Retraite : BNP Paribas Easy MSCI Europe SRI, Morgan Stanley Global Opportunity, Multipar Actions PME-ETI).
-  - Calcul rétro-ingénierie automatique de la VL unitaire et du PRU unitaire d'après les plus-values et les parts du relevé.
-  - Création/mise à jour automatique de l'enveloppe `BNP Cardif - PERO Retraite` et de l'enveloppe PEE avec mise à jour des positions holdings à l'euro près.
-  - Modal frontend ergonomique `PeeImportModal.jsx` avec drag & drop du PDF, aperçu visuel en deux volets et validation en 1 clic.
+  - Parseur PDF officiel (`pee_import_service.py`) calibré sur le relevé de situation Schneider Electric France / BNP Paribas.
+  - Séparation automatique entre le **PEE** (fonds 5 ans bloqués) et le **PERO Retraite** (Cardif Retraite).
+  - Rétro-ingénierie automatique de la VL unitaire et du PRU unitaire à partir des plus-values et des parts du document.
+  - Modal frontend ergonomique `PeeImportModal.jsx` avec prévisualisation en deux volets et injection en 1 clic dans `patrimoines.db`.
 
 ---
 
@@ -168,7 +199,12 @@ npm.cmd run dev
 
 ---
 
-## 6. Règles de Contribution pour le Prochain Modèle
+## 6. Règles & Retours d'Expérience Techniques
 1. **Conserver la simplicité locale** : ne pas forcer de cloud payant ; SQLite suffit largement pour un patrimoine personnel.
 2. **Ne jamais casser l'expérience Livrets / PEE** : ces supports n'ont pas de ticker Yahoo Finance direct, ils doivent toujours rester facilement éditables sans forcer de ticker.
-3. **Mettre à jour ce fichier (`PROJECT_STATUS.md`)** dès qu'une nouvelle fonctionnalité majeure est achevée.
+3. **Spécificités Open Banking (Enable Banking DSP2)** :
+   - **Réglementation DSP2** : La durée de validité du consentement (`valid_until`) ne doit jamais dépasser 180 jours (réglementation européenne). Utiliser `now + 89 jours`.
+   - **Nom de banque (ASPSP)** : Doit respecter la casse officielle exacte (`Mock ASPSP`, `BBVA`, `BoursoBank`).
+   - **Redirect URL** : Doit matcher au caractère près celle configurée dans la console Enable Banking (ex: `http://localhost:5173/` ou `https://localhost:5173`).
+   - **Sandbox vs Production** : L'environnement Sandbox d'Enable Banking ne liste que `Mock ASPSP` et `BBVA`. Pour voir apparaître **BoursoBank**, **BNP Paribas**, **Revolut**, l'application doit être créée en environnement **Production** sur la console Enable Banking.
+4. **Mettre à jour ce fichier (`PROJECT_STATUS.md`)** dès qu'une nouvelle fonctionnalité majeure est achevée.

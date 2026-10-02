@@ -60,6 +60,29 @@ export default function App() {
     fetchPortfolio(false);
   }, [fetchPortfolio]);
 
+  // Détection du retour d'autorisation bancaire Open Banking (?code=... ou ?state=...)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const state = params.get('state');
+
+    if (code) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+      setIsLoading(true);
+      api.exchangeOpenBankingSession(code, state)
+        .then((res) => {
+          alert(res.message || "Votre banque a été synchronisée et vos comptes ont été créés avec succès !");
+          fetchPortfolio(true);
+        })
+        .catch((err) => {
+          alert("Erreur lors de la synchronisation bancaire : " + err.message);
+        })
+        .finally(() => {
+          setIsLoading(false);
+        });
+    }
+  }, [fetchPortfolio]);
+
   // Boucle de compte à rebours et rafraîchissement temps réel automatique
   useEffect(() => {
     if (!autoRefresh) return;
@@ -284,7 +307,10 @@ export default function App() {
       <BankSyncModal
         isOpen={isBankSyncOpen}
         onClose={() => setIsBankSyncOpen(false)}
-        onSyncSuccess={() => fetchPortfolio(true)}
+        onSyncSuccess={() => {
+          fetchPortfolio(true);
+          setTxRefreshTrigger(prev => prev + 1);
+        }}
       />
 
       <footer className="border-t border-slate-800/60 py-6 text-center text-xs text-slate-400">
