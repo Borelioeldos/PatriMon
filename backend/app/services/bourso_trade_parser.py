@@ -229,6 +229,8 @@ class BoursoTradeParser:
             unit_price=unit_price,
             unit_price_eur=unit_price,
             amount=net_amount,
+            amount_eur=net_amount,
+            fees=trade_data.get("fees", 0.0),
             fees_eur=trade_data.get("fees", 0.0),
             currency="EUR",
             category="Investissement & Épargne",

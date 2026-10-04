@@ -4,6 +4,8 @@ import {
   TrendingUp, TrendingDown, PiggyBank, Landmark, ShieldCheck, Wallet, ArrowUpRight,
   Building2, Zap
 } from 'lucide-react';
+import { formatEUR, formatCurrency } from '../utils/format';
+import EditHoldingModal from './EditHoldingModal';
 
 export default function AccountsList({ 
   accounts = [], 
@@ -12,11 +14,13 @@ export default function AccountsList({
   onDeleteHolding, 
   onOpenAddAssetForAccount,
   onOpenPeeImport,
-  onOpenBankSync
+  onOpenBankSync,
+  onHoldingUpdated
 }) {
   const [expandedAccounts, setExpandedAccounts] = useState({});
   const [editingCashId, setEditingCashId] = useState(null);
   const [cashInputValue, setCashInputValue] = useState('');
+  const [editingHolding, setEditingHolding] = useState(null);
 
   const toggleExpand = (accountId) => {
     setExpandedAccounts(prev => ({
@@ -36,15 +40,6 @@ export default function AccountsList({
       await onUpdateAccount(account.id, { cash_balance: newCash });
     }
     setEditingCashId(null);
-  };
-
-  const formatEUR = (val) => {
-    return new Intl.NumberFormat('fr-FR', {
-      style: 'currency',
-      currency: 'EUR',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    }).format(val || 0);
   };
 
   /** Normalise le type de compte pour comparaison (toujours lowercase). */
@@ -149,7 +144,7 @@ export default function AccountsList({
                     </div>
 
                     <div className="flex items-center gap-3 mt-2 text-xs text-slate-400 flex-wrap">
-                      {/* Solde espèces / livret avec bouton d'édition direct */}
+                      {/* Solde espèces / livret avec bouton d'édition direct (F5: utilise devise du compte) */}
                       <div 
                         className="flex items-center gap-1.5 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800"
                         onClick={(e) => e.stopPropagation()}
@@ -184,7 +179,9 @@ export default function AccountsList({
                           </div>
                         ) : (
                           <div className="flex items-center gap-1.5">
-                            <span className="font-bold text-white text-sm">{formatEUR(acc.cash_balance)}</span>
+                            <span className="font-bold text-white text-sm">
+                              {formatCurrency(acc.cash_balance, acc.currency || 'EUR')}
+                            </span>
                             <button
                               onClick={() => handleStartEditCash(acc)}
                               className="px-2 py-0.5 rounded bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 text-[11px] font-medium transition-colors flex items-center gap-1"
@@ -308,7 +305,7 @@ export default function AccountsList({
                             <th className="pb-3 px-3 text-right">Var. Jour</th>
                             <th className="pb-3 px-3 text-right">Valeur (€)</th>
                             <th className="pb-3 px-3 text-right">Plus-Value</th>
-                            <th className="pb-3 pl-3 text-right">Action</th>
+                            <th className="pb-3 pl-3 text-right">Actions</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-800/50">
@@ -328,9 +325,10 @@ export default function AccountsList({
                                         Épargne
                                       </span>
                                     )}
+                                    {/* F6: Label contextuel Manuel vs PEE / PERO */}
                                     {h.is_manual && !isLivret && (
                                       <span className="text-[10px] px-1.5 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded font-medium">
-                                        PEE
+                                        {accType === 'pee' ? 'PEE' : accType === 'pero' ? 'PERO' : 'Manuel'}
                                       </span>
                                     )}
                                   </div>
@@ -396,13 +394,23 @@ export default function AccountsList({
                                 </td>
 
                                 <td className="py-3 pl-3 text-right">
-                                  <button
-                                    onClick={() => onDeleteHolding(h.id)}
-                                    className="p-1.5 text-slate-500 hover:text-rose-400 transition-colors rounded-lg hover:bg-rose-500/10"
-                                    title="Supprimer la position"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
+                                  <div className="flex items-center justify-end gap-1">
+                                    {/* F4: Bouton Modifier / Recalculer le holding */}
+                                    <button
+                                      onClick={() => setEditingHolding(h)}
+                                      className="p-1.5 text-slate-500 hover:text-blue-400 rounded-lg hover:bg-blue-500/10 transition-colors"
+                                      title="Modifier la position ou recalculer le PRU"
+                                    >
+                                      <Edit2 className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={() => onDeleteHolding(h.id)}
+                                      className="p-1.5 text-slate-500 hover:text-rose-400 transition-colors rounded-lg hover:bg-rose-500/10"
+                                      title="Supprimer la position"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             );
@@ -428,6 +436,16 @@ export default function AccountsList({
           );
         })}
       </div>
+
+      {/* Modal d'édition & recalcul du holding */}
+      <EditHoldingModal
+        isOpen={!!editingHolding}
+        holding={editingHolding}
+        onClose={() => setEditingHolding(null)}
+        onHoldingUpdated={() => {
+          if (onHoldingUpdated) onHoldingUpdated();
+        }}
+      />
     </div>
   );
 }

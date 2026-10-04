@@ -10,7 +10,8 @@ from app.database import get_session
 from app.models import DriveSyncLog
 from app.services.google_drive_service import google_drive_service
 
-router = APIRouter(prefix="/api/google-drive", tags=["Google Drive Bourse"])
+router = APIRouter(prefix="/google-drive", tags=["Google Drive Bourse"])
+
 
 
 @router.get("/tree")

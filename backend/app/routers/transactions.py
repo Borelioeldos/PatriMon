@@ -132,14 +132,12 @@ def create_transaction(
 
 @router.delete("/{transaction_id}")
 def delete_transaction(transaction_id: int, session: Session = Depends(get_session)):
-    """Supprime une transaction."""
-    tx = session.get(Transaction, transaction_id)
-    if not tx:
+    """Supprime une transaction, réajuste le solde espèces du compte et recalcule la position."""
+    deleted = transaction_service.delete_transaction(session, transaction_id)
+    if not deleted:
         raise HTTPException(status_code=404, detail="Transaction introuvable")
+    return {"message": "Transaction supprimée avec succès, solde espèces réajusté et position recalculée"}
 
-    session.delete(tx)
-    session.commit()
-    return {"message": "Transaction supprimée avec succès"}
 
 
 @router.get("/stats", response_model=Dict[str, Any])

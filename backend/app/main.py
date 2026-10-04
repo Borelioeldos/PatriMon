@@ -39,7 +39,7 @@ app.include_router(market.router, prefix="/api")
 app.include_router(transactions.router, prefix="/api")
 app.include_router(open_banking.router, prefix="/api")
 app.include_router(pee.router, prefix="/api")
-app.include_router(google_drive.router)
+app.include_router(google_drive.router, prefix="/api")
 
 
 @app.get("/")
@@ -47,6 +47,7 @@ def root():
     return {
         "status": "online",
         "app": "PatriMon API",
-        "version": "1.1.0",
+        "version": "3.0.0",
         "documentation": "/docs",
     }
+

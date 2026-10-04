@@ -5,6 +5,7 @@ import {
   Tag, Zap, Landmark
 } from 'lucide-react';
 import { api } from '../services/api';
+import { formatEUR } from '../utils/format';
 
 const CATEGORY_COLORS = {
   "Alimentation & Courses": "bg-orange-500/15 text-orange-400 border-orange-500/30",
@@ -79,7 +80,7 @@ export default function TransactionsList({
   };
 
   const handleDelete = async (txId) => {
-    if (window.confirm("Êtes-vous sûr de vouloir supprimer cette transaction de l'historique ?")) {
+    if (window.confirm("Supprimer cette transaction ? Le solde de trésorerie du compte sera réajusté et la position (quantité/PRU) recalculée automatiquement.")) {
       try {
         await api.deleteTransaction(txId);
         fetchTransactions();
@@ -88,15 +89,6 @@ export default function TransactionsList({
         alert(err.message);
       }
     }
-  };
-
-  const formatEUR = (val) => {
-    return new Intl.NumberFormat('fr-FR', {
-      style: 'currency',
-      currency: 'EUR',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(val || 0);
   };
 
   const getTypeBadge = (type) => {

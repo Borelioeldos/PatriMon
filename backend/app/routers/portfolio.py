@@ -13,10 +13,11 @@ router = APIRouter(prefix="/portfolio", tags=["Portfolio"])
 @router.get("/summary", response_model=Dict[str, Any])
 def get_portfolio_summary(
     force_refresh: bool = Query(False, description="Forcer le rafraîchissement des prix de marché"),
+    record_snapshot: bool = Query(False, description="Enregistrer ou mettre à jour le snapshot du jour"),
     session: Session = Depends(get_session)
 ):
     """
-    Retourne la vue consolidée du patrimoine :
+    Retourne la vue consolidée du patrimoine (lecture seule par défaut) :
     - Valeur totale nette (€)
     - Montant investi (€)
     - Plus-value globale (€ et %)
@@ -27,7 +28,28 @@ def get_portfolio_summary(
     - Historique d'évolution
     - Métriques financières avancées : TWR, MWR / TRI, dividendes, plus-values
     """
-    return PortfolioService.get_portfolio_summary(session, force_refresh=force_refresh)
+    return PortfolioService.get_portfolio_summary(
+        session, force_refresh=force_refresh, record_snapshot=record_snapshot
+    )
+
+
+@router.post("/snapshot", response_model=Dict[str, Any])
+def create_portfolio_snapshot(
+    force_refresh: bool = Query(True, description="Rafraîchir les cotations avant snapshot"),
+    session: Session = Depends(get_session)
+):
+    """Déclenche explicitement la prise d'un snapshot journalier de valorisation."""
+    summary = PortfolioService.get_portfolio_summary(
+        session, force_refresh=force_refresh, record_snapshot=True
+    )
+    return {
+        "message": "Snapshot journalier enregistré avec succès",
+        "snapshot_date": summary.get("history", [{}])[-1].get("full_date") if summary.get("history") else None,
+        "total_net_worth": summary.get("total_net_worth"),
+        "investment_net_worth": summary.get("investment_net_worth"),
+        "total_gain": summary.get("total_gain"),
+    }
+
 
 
 @router.get("/benchmarks", response_model=List[Dict[str, str]])

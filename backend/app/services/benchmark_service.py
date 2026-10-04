@@ -85,10 +85,22 @@ class BenchmarkService:
         bench_prices = self.get_benchmark_history(clean_sym, period=period)
 
         # Récupérer l'historique réel des snapshots du portefeuille
-        snapshots = session.exec(
+        all_snapshots = session.exec(
             select(PortfolioSnapshot)
             .order_by(PortfolioSnapshot.snapshot_date.asc())
         ).all()
+
+        sorted_dates = sorted(bench_prices.keys())
+        if sorted_dates and len(all_snapshots) > 1:
+            min_bench_date = date.fromisoformat(sorted_dates[0])
+            snapshots_in_period = [s for s in all_snapshots if s.snapshot_date >= min_bench_date]
+            prior_snapshots = [s for s in all_snapshots if s.snapshot_date < min_bench_date]
+            if prior_snapshots and (not snapshots_in_period or snapshots_in_period[0].snapshot_date > min_bench_date):
+                snapshots = [prior_snapshots[-1]] + snapshots_in_period
+            else:
+                snapshots = snapshots_in_period
+        else:
+            snapshots = all_snapshots
 
         comparison_series: List[Dict[str, Any]] = []
 
@@ -97,14 +109,14 @@ class BenchmarkService:
             base_worth = base_snapshot.total_net_worth or 1.0
 
             # Trouver le prix du benchmark à la date du premier snapshot ou la date la plus proche
-            sorted_dates = sorted(bench_prices.keys())
             base_date_str = base_snapshot.snapshot_date.isoformat()
 
             # Prix initial du benchmark
             base_bench_price = bench_prices.get(base_date_str)
             if not base_bench_price and sorted_dates:
-                # Trouver la date la plus proche
-                base_bench_price = bench_prices[sorted_dates[0]]
+                # Trouver la date la plus proche égale ou postérieure
+                matching_dates = [d for d in sorted_dates if d >= base_date_str]
+                base_bench_price = bench_prices[matching_dates[0]] if matching_dates else bench_prices[sorted_dates[0]]
 
             if not base_bench_price or base_bench_price <= 0:
                 base_bench_price = 1.0

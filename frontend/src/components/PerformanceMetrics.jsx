@@ -3,21 +3,13 @@ import {
   Percent, Award, DollarSign, CheckCircle2, Info, 
   ArrowUpRight, ArrowDownRight, Layers, HelpCircle
 } from 'lucide-react';
+import { formatEUR } from '../utils/format';
 
 export default function PerformanceMetrics({ summary }) {
   const metrics = summary?.performance_metrics || {};
   const twr = metrics.twr || {};
   const mwr = metrics.mwr || {};
   const stats = metrics.stats || {};
-
-  const formatEUR = (val) => {
-    return new Intl.NumberFormat('fr-FR', {
-      style: 'currency',
-      currency: 'EUR',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(val || 0);
-  };
 
   const isTwrPos = (twr.twr_percent || 0) >= 0;
   const isMwrPos = (mwr.mwr_percent || 0) >= 0;

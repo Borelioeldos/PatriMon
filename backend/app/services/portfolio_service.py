@@ -3,11 +3,13 @@ Service de valorisation du portefeuille.
 Calcule les KPIs, l'allocation, et gère les snapshots journaliers.
 """
 from datetime import date, datetime, timezone
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 from sqlmodel import Session, select
 
-from app.models import Account, Holding, PortfolioSnapshot, AssetClass
+from app.models import (
+    Account, Holding, PortfolioSnapshot, AssetClass, AccountType, INVESTMENT_ACCOUNT_TYPES
+)
 from app.services.market_service import market_service
 from app.services.performance_service import performance_service
 
@@ -99,7 +101,9 @@ class PortfolioService:
     # ────────────────── Synthèse globale du patrimoine ──────────────────
 
     @classmethod
-    def get_portfolio_summary(cls, session: Session, force_refresh: bool = False) -> Dict[str, Any]:
+    def get_portfolio_summary(
+        cls, session: Session, force_refresh: bool = False, record_snapshot: bool = False
+    ) -> Dict[str, Any]:
         """Génère la vue consolidée du patrimoine complet."""
         accounts = session.exec(select(Account)).all()
         holdings = session.exec(select(Holding)).all()
@@ -116,20 +120,32 @@ class PortfolioService:
             "Actions & ETF": 0.0,
             "Livrets & Épargne": 0.0,
             "Épargne Entreprise (PEE)": 0.0,
+            "Retraite (PERO)": 0.0,
             "Crypto": 0.0,
-            "Autre": 0.0,
+            "Fonds & OPCVM": 0.0,
+            "Immobilier & Autre": 0.0,
         }
 
-        # Enrichir toutes les positions et grouper par compte
+        # Enrichir toutes les positions en parallèle (optimisation latence réseau Yahoo)
         holdings_by_acc: Dict[int, List[Dict[str, Any]]] = {}
         all_enriched_holdings: List[Dict[str, Any]] = []
 
-        for h in holdings:
-            enriched = cls.enrich_holding(h, force_refresh=force_refresh)
-            holdings_by_acc.setdefault(h.account_id, []).append(enriched)
-            all_enriched_holdings.append(enriched)
+        if holdings:
+            from concurrent.futures import ThreadPoolExecutor
+            max_workers = min(8, len(holdings))
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                enriched_results = list(
+                    executor.map(lambda h: (h, cls.enrich_holding(h, force_refresh=force_refresh)), holdings)
+                )
+
+            for h, enriched in enriched_results:
+                holdings_by_acc.setdefault(h.account_id, []).append(enriched)
+                all_enriched_holdings.append(enriched)
+
 
         accounts_data: List[Dict[str, Any]] = []
+        inv_net_worth = 0.0
+        inv_invested = 0.0
 
         for acc in accounts:
             acc_cash_eur = acc.cash_balance * market_service.get_eur_rate(acc.currency)
@@ -145,6 +161,11 @@ class PortfolioService:
             total_cash += acc_cash_eur
             total_net_worth += acc_total_val
             total_invested += acc_total_invested
+
+            # Cumuls périmètre investissement (PEA, CTO, Crypto, PEE, PERO)
+            if acc.account_type in INVESTMENT_ACCOUNT_TYPES:
+                inv_net_worth += acc_total_val
+                inv_invested += acc_total_invested
 
             # ── Répartition par institution ──
             inst = acc.institution or "Autre"
@@ -166,16 +187,23 @@ class PortfolioService:
             for h in acc_holdings:
                 val = h["total_value_eur"]
                 ac = h["asset_class"]
-                if ac in (AssetClass.STOCK, AssetClass.ETF):
+                acc_type = acc.account_type
+                if acc_type == AccountType.PERO:
+                    by_asset_class["Retraite (PERO)"] += val
+                elif acc_type == AccountType.PEE:
+                    by_asset_class["Épargne Entreprise (PEE)"] += val
+                elif acc_type == AccountType.REAL_ESTATE:
+                    by_asset_class["Immobilier & Autre"] += val
+                elif ac in (AssetClass.STOCK, AssetClass.ETF):
                     by_asset_class["Actions & ETF"] += val
                 elif ac == AssetClass.CRYPTO:
                     by_asset_class["Crypto"] += val
                 elif ac in (AssetClass.SAVINGS, AssetClass.CASH):
                     by_asset_class["Livrets & Épargne"] += val
-                elif ac == AssetClass.FUND or acc.account_type.value == "pee":
-                    by_asset_class["Épargne Entreprise (PEE)"] += val
+                elif ac == AssetClass.FUND:
+                    by_asset_class["Fonds & OPCVM"] += val
                 else:
-                    by_asset_class["Autre"] += val
+                    by_asset_class["Immobilier & Autre"] += val
 
             # ── Données enrichies du compte ──
             gain_eur = acc_total_val - acc_total_invested
@@ -199,10 +227,21 @@ class PortfolioService:
         total_gain = total_net_worth - total_invested
         total_gain_pct = ((total_gain / total_invested) * 100) if total_invested > 0 else 0.0
 
-        # ── Snapshot journalier automatique ──
-        cls._record_daily_snapshot(
-            session, total_net_worth, total_invested, total_gain, total_gain_pct
+        # Total Liquidités & Épargne incluant le cash et les livrets saisis comme positions (F7)
+        total_savings_holdings = sum(
+            h["total_value_eur"] for h in all_enriched_holdings
+            if h.get("asset_class") in (AssetClass.SAVINGS, AssetClass.CASH)
         )
+        total_cash_and_savings = round(total_cash + total_savings_holdings, 2)
+
+        # ── Snapshot journalier (R1 : uniquement si record_snapshot=True) ──
+        if record_snapshot:
+            cls._record_daily_snapshot(
+                session, total_net_worth, total_invested, total_gain, total_gain_pct,
+                investment_net_worth=inv_net_worth,
+                investment_invested=inv_invested,
+            )
+
 
         # ── Allocations pour graphiques ──
         allocation_institution = [
@@ -217,12 +256,13 @@ class PortfolioService:
             if v > 0
         ]
 
-        # ── Historique réel (snapshots uniquement, pas de simulation) ──
+        # ── Historique réel : 90 derniers snapshots (tri desc + limit puis inversion, B2) ──
         snapshots = session.exec(
             select(PortfolioSnapshot)
-            .order_by(PortfolioSnapshot.snapshot_date.asc())
+            .order_by(PortfolioSnapshot.snapshot_date.desc())
             .limit(90)
         ).all()
+        snapshots = list(reversed(snapshots))
 
         history = [
             {
@@ -253,17 +293,29 @@ class PortfolioService:
             reverse=True,
         )
 
-        # ── Métriques de performance financière avancées (TWR, MWR / TRI, stats) ──
+        # ── Métriques de performance financière avancées sur le périmètre investissement ──
+        inv_gain = inv_net_worth - inv_invested
+        inv_gain_pct = ((inv_gain / inv_invested) * 100) if inv_invested > 0 else 0.0
+
         perf_metrics = performance_service.get_full_performance_metrics(
-            session, total_net_worth, total_invested
+            session,
+            total_net_worth=round(inv_net_worth, 2) if inv_net_worth > 0 else total_net_worth,
+            total_invested=round(inv_invested, 2) if inv_invested > 0 else total_invested,
         )
 
         return {
             "total_net_worth": round(total_net_worth, 2),
             "total_invested": round(total_invested, 2),
-            "total_cash": round(total_cash, 2),
+            "total_cash": total_cash_and_savings,
+            "bank_cash": round(total_cash, 2),
+            "savings_holdings": round(total_savings_holdings, 2),
+            "total_cash_and_savings": total_cash_and_savings,
             "total_gain": round(total_gain, 2),
             "total_gain_percent": round(total_gain_pct, 2),
+            "investment_net_worth": round(inv_net_worth, 2),
+            "investment_invested": round(inv_invested, 2),
+            "investment_gain": round(inv_gain, 2),
+            "investment_gain_percent": round(inv_gain_pct, 2),
             "accounts": accounts_data,
             "allocation_institution": allocation_institution,
             "allocation_asset_class": allocation_asset_class,
@@ -282,6 +334,8 @@ class PortfolioService:
         total_invested: float,
         total_gain: float,
         total_gain_percent: float,
+        investment_net_worth: Optional[float] = None,
+        investment_invested: Optional[float] = None,
     ) -> None:
         """Enregistre ou met à jour le snapshot de valorisation du jour."""
         if total_net_worth <= 0:
@@ -292,11 +346,18 @@ class PortfolioService:
             select(PortfolioSnapshot).where(PortfolioSnapshot.snapshot_date == today)
         ).first()
 
+        inv_nw = round(investment_net_worth, 2) if investment_net_worth is not None else None
+        inv_inv = round(investment_invested, 2) if investment_invested is not None else None
+
         if existing:
             existing.total_net_worth = round(total_net_worth, 2)
             existing.total_invested = round(total_invested, 2)
             existing.total_gain = round(total_gain, 2)
             existing.total_gain_percent = round(total_gain_percent, 2)
+            if inv_nw is not None:
+                existing.investment_net_worth = inv_nw
+            if inv_inv is not None:
+                existing.investment_invested = inv_inv
             session.add(existing)
         else:
             snapshot = PortfolioSnapshot(
@@ -305,6 +366,8 @@ class PortfolioService:
                 total_invested=round(total_invested, 2),
                 total_gain=round(total_gain, 2),
                 total_gain_percent=round(total_gain_percent, 2),
+                investment_net_worth=inv_nw,
+                investment_invested=inv_inv,
             )
             session.add(snapshot)
 

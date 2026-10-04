@@ -26,20 +26,36 @@ class RevolutCsvParser:
     def _clean_num(val_str: Optional[str]) -> float:
         if not val_str:
             return 0.0
-        cleaned = (
+        # Retirer symboles monétaires et espaces insécables
+        s = (
             str(val_str)
             .replace("EUR", "")
             .replace("USD", "")
             .replace("€", "")
             .replace("$", "")
-            .replace("\xa0", "")
-            .replace(" ", "")
-            .replace(",", ".")
+            .replace("\xa0", " ")
+            .replace("\u202f", " ")
             .strip()
         )
-        cleaned = re.sub(r"[^\d.-]", "", cleaned)
+        # Détection séparateurs milliers vs décimaux
+        if "," in s and "." in s:
+            # e.g. 93,126.88 -> la virgule est le séparateur des milliers
+            if s.rfind(",") < s.rfind("."):
+                s = s.replace(",", "")
+            else:
+                # e.g. 1.234,56
+                s = s.replace(".", "").replace(",", ".")
+        elif "," in s:
+            # Virgule seule : vérification décimale (ex: 12,50) ou milliers (ex: 1,000)
+            parts = s.split(",")
+            if len(parts[-1]) <= 2:
+                s = s.replace(",", ".")
+            else:
+                s = s.replace(",", "")
+
+        s = re.sub(r"[^\d.-]", "", s)
         try:
-            return float(cleaned)
+            return float(s)
         except ValueError:
             return 0.0
 
@@ -52,8 +68,10 @@ class RevolutCsvParser:
                 return datetime.fromisoformat(date_str.replace("Z", "+00:00")).date()
             except Exception:
                 pass
-        # Formats de type "Oct 18, 2025, 10:35:44 PM"
-        clean_d = re.sub(r"[^\x00-\x7F]+", "", date_str).strip()
+        # Remplacer les espaces insécables / non-ASCII (\u202f, \xa0) par un espace standard
+        clean_d = re.sub(r"[^\x00-\x7F]+", " ", date_str).strip()
+        clean_d = re.sub(r"\s+", " ", clean_d)
+
         formats = [
             "%b %d, %Y, %I:%M:%S %p",
             "%b %d, %Y",
@@ -148,7 +166,10 @@ class RevolutCsvParser:
                 "quantity": quantity,
                 "unit_price": unit_price,
                 "unit_price_eur": unit_price_eur,
-                "amount": amount_eur,
+                "amount": total_amt,
+                "amount_eur": amount_eur,
+                "fees": 0.0,
+                "fees_eur": 0.0,
                 "currency": curr,
                 "fx_rate": fx_rate,
                 "external_id": ext_id,
@@ -199,7 +220,9 @@ class RevolutCsvParser:
                 "unit_price": unit_price_eur,
                 "unit_price_eur": unit_price_eur,
                 "amount": val_eur,
+                "amount_eur": val_eur,
                 "fees": fees_eur,
+                "fees_eur": fees_eur,
                 "currency": "EUR",
                 "external_id": ext_id,
             })
@@ -301,20 +324,30 @@ class RevolutCsvParser:
 
                 holding_id = holding.id
 
+            amount_val = item.get("amount", 0.0)
+            amount_eur_val = item.get("amount_eur", amount_val)
+            fees_val = item.get("fees", 0.0)
+            fees_eur_val = item.get("fees_eur", fees_val)
+            tx_type = item["type"]
+            cat_name = "Dividendes & Intérêts" if tx_type == TransactionType.DIVIDEND else "Investissement & Épargne"
+
+
             tx = Transaction(
                 account_id=account.id,
                 holding_id=holding_id,
-                type=item["type"],
+                type=tx_type,
                 transaction_date=item["date"],
                 symbol=symbol if symbol != "CASH" else None,
                 name=item.get("name"),
                 quantity=item.get("quantity"),
                 unit_price=item.get("unit_price"),
                 unit_price_eur=item.get("unit_price_eur"),
-                amount=item.get("amount", 0.0),
-                fees_eur=item.get("fees", 0.0),
+                amount=amount_val,
+                amount_eur=amount_eur_val,
+                fees=fees_val,
+                fees_eur=fees_eur_val,
                 currency=item.get("currency", "EUR"),
-                category="Investissement & Épargne",
+                category=cat_name,
                 external_id=ext_id,
                 notes=f"Transaction Revolut {item.get('category', '')}",
             )

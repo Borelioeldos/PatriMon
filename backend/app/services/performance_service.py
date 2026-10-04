@@ -12,7 +12,7 @@ from typing import Dict, Any, List, Tuple, Optional
 from sqlmodel import Session, select
 
 from app.models import (
-    PortfolioSnapshot, Transaction, TransactionType, Account
+    PortfolioSnapshot, Transaction, TransactionType, Account, INVESTMENT_ACCOUNT_TYPES
 )
 from app.services.transaction_service import transaction_service
 
@@ -117,15 +117,17 @@ class PerformanceService:
             .order_by(PortfolioSnapshot.snapshot_date.asc())
         ).all()
 
-        # Récupérer tous les versements et retraits groupés par date
-        txs = session.exec(
-            select(Transaction)
+        # Récupérer les versements et retraits groupés par date UNIQUEMENT sur les comptes d'investissement
+        tx_rows = session.exec(
+            select(Transaction, Account)
+            .join(Account, Transaction.account_id == Account.id)
             .where(Transaction.type.in_([TransactionType.DEPOSIT, TransactionType.WITHDRAWAL]))
+            .where(Account.account_type.in_(INVESTMENT_ACCOUNT_TYPES))
             .order_by(Transaction.transaction_date.asc())
         ).all()
 
         daily_external_flows: Dict[date, float] = {}
-        for t in txs:
+        for t, _ in tx_rows:
             d = t.transaction_date
             flow = t.amount_eur if t.type == TransactionType.DEPOSIT else -t.amount_eur
             daily_external_flows[d] = daily_external_flows.get(d, 0.0) + flow
@@ -139,12 +141,14 @@ class PerformanceService:
                     "twr_percent": round(simple_return * 100, 2),
                     "annualized_twr_percent": round(simple_return * 100, 2),
                     "days": 1,
+                    "is_fallback": True,
                 }
             return {
                 "twr": 0.0,
                 "twr_percent": 0.0,
                 "annualized_twr_percent": 0.0,
                 "days": 0,
+                "is_fallback": True,
             }
 
         # Chaînage des rendements de sous-périodes
@@ -154,10 +158,14 @@ class PerformanceService:
             prev = snapshots[i - 1]
             curr = snapshots[i]
 
-            prev_val = prev.total_net_worth
-            curr_val = curr.total_net_worth
+            prev_val = prev.investment_net_worth if (prev.investment_net_worth is not None and prev.investment_net_worth > 0) else prev.total_net_worth
+            curr_val = curr.investment_net_worth if (curr.investment_net_worth is not None and curr.investment_net_worth > 0) else curr.total_net_worth
 
-            cf = daily_external_flows.get(curr.snapshot_date, 0.0)
+            # Neutraliser TOUS les flux externes tombés dans l'intervalle ]prev.snapshot_date, curr.snapshot_date]
+            cf = sum(
+                flow for d, flow in daily_external_flows.items()
+                if prev.snapshot_date < d <= curr.snapshot_date
+            )
             base_val = prev_val + cf
 
             if base_val > 0:
@@ -181,6 +189,7 @@ class PerformanceService:
             "twr_percent": round(twr * 100, 2),
             "annualized_twr_percent": round(ann_twr * 100, 2),
             "days": days,
+            "is_fallback": False,
         }
 
     # ────────────────────── Calcul du MWR / TRI (XIRR) ──────────────────────
@@ -189,16 +198,21 @@ class PerformanceService:
     def calculate_mwr(session: Session, current_net_worth: float, current_invested: float) -> Dict[str, Any]:
         """
         Calcule le Money-Weighted Return / TRI (Taux de Rendement Interne).
-        Prend en compte la date exacte de chaque flux de capitaux.
+        Prend en compte la date exacte de chaque flux de capitaux sur le périmètre investissement.
         """
         today = date.today()
 
-        # Récupérer les transactions de versements / retraits
-        txs = session.exec(
-            select(Transaction)
+        # Récupérer les transactions de versements / retraits sur les comptes d'investissement
+        tx_rows = session.exec(
+            select(Transaction, Account)
+            .join(Account, Transaction.account_id == Account.id)
             .where(Transaction.type.in_([TransactionType.DEPOSIT, TransactionType.WITHDRAWAL]))
+            .where(Account.account_type.in_(INVESTMENT_ACCOUNT_TYPES))
             .order_by(Transaction.transaction_date.asc())
         ).all()
+
+        txs = [r[0] for r in tx_rows]
+
 
         cash_flows: List[Tuple[date, float]] = []
 

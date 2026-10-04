@@ -40,13 +40,25 @@ export default function App() {
   // Trigger pour recharger le journal des transactions
   const [txRefreshTrigger, setTxRefreshTrigger] = useState(0);
 
+  const isFetchingRef = useRef(false);
+
   const fetchPortfolio = useCallback(async (forceRefresh = false) => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
     try {
       if (forceRefresh) setIsRefreshing(true);
       setError(null);
       const data = await api.getSummary(forceRefresh);
       setSummary(data);
-      setLastUpdated(data.updated_at || new Date().toLocaleTimeString('fr-FR'));
+
+      let timeStr = '';
+      if (data.updated_at) {
+        const d = new Date(data.updated_at);
+        timeStr = isNaN(d.getTime()) ? data.updated_at : d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      } else {
+        timeStr = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      }
+      setLastUpdated(timeStr);
       setCountdown(REFRESH_INTERVAL_SECONDS);
     } catch (err) {
       console.error(err);
@@ -54,6 +66,7 @@ export default function App() {
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
+      isFetchingRef.current = false;
     }
   }, []);
 
@@ -85,14 +98,14 @@ export default function App() {
     }
   }, [fetchPortfolio]);
 
-  // Boucle de compte à rebours et rafraîchissement temps réel automatique
+  // Boucle de compte à rebours et rafraîchissement temps réel automatique (F1 & F2)
   useEffect(() => {
     if (!autoRefresh) return;
 
     const timer = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
-          fetchPortfolio(true);
+          setTimeout(() => fetchPortfolio(false), 0);
           return REFRESH_INTERVAL_SECONDS;
         }
         return prev - 1;
@@ -263,6 +276,10 @@ export default function App() {
                   onOpenAddAssetForAccount={handleOpenAddAsset}
                   onOpenPeeImport={() => setIsPeeImportOpen(true)}
                   onOpenBankSync={() => setIsBankSyncOpen(true)}
+                  onHoldingUpdated={() => {
+                    fetchPortfolio(false);
+                    setTxRefreshTrigger(prev => prev + 1);
+                  }}
                 />
 
                 {/* 5. Journal des transactions & opérations financières (Phase 2) */}

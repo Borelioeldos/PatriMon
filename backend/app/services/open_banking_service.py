@@ -1279,9 +1279,7 @@ class OpenBankingService:
                             data = resp.json() or {}
                             tx_list = data.get("transactions") or []
                             for t in tx_list:
-                                ext_id = t.get("entry_reference") or t.get("transaction_id")
-                                if not ext_id:
-                                    ext_id = f"eb_{t.get('booking_date')}_{abs(float(t.get('transaction_amount', {}).get('amount', 0)))}"
+                                ext_id = t.get("entry_reference") or t.get("transaction_id") or t.get("internal_transaction_id")
                                 amt_dict = t.get("transaction_amount") or {}
                                 amt_val = float(amt_dict.get("amount", 0.0))
                                 cur = amt_dict.get("currency") or "EUR"
@@ -1298,11 +1296,19 @@ class OpenBankingService:
                                 creditor = (t.get("creditor") or {}).get("name", "")
                                 debtor = (t.get("debtor") or {}).get("name", "")
 
+                                # Si identifiant manquant, générer une empreinte unique avec signature des données (R6)
+                                if not ext_id:
+                                    import hashlib
+                                    sig = f"{dt_str}_{amt_val}_{rem_str}_{creditor}_{debtor}"
+                                    h = hashlib.sha256(sig.encode('utf-8')).hexdigest()[:12]
+                                    ext_id = f"eb_{dt_str}_{abs(amt_val)}_{h}"
+
                                 # Préférer le nom explicite du commerçant / tiers si disponible
                                 party_name = (debtor if amt_val > 0 and debtor else creditor) or rem_str or "Opération bancaire"
 
                                 raw_txs_to_process.append({
                                     "external_id": str(ext_id),
+
                                     "amount": amt_val,
                                     "currency": cur,
                                     "date": dt_str,
@@ -1434,13 +1440,26 @@ class OpenBankingService:
                             if isinstance(b_data, dict):
                                 b_data = [b_data]
                             if isinstance(b_data, list) and b_data:
-                                first_b = b_data[0]
-                                if isinstance(first_b, dict):
-                                    amt_obj = first_b.get("balance_amount")
+                                # Prioriser le solde comptable ou disponible de référence (CLBD > ITAV > premier) (R6)
+                                chosen_b = None
+                                for b in b_data:
+                                    if isinstance(b, dict):
+                                        b_type = (b.get("balance_type") or b.get("name") or "").upper()
+                                        if "CLBD" in b_type or "CLOSINGBOOKED" in b_type:
+                                            chosen_b = b
+                                            break
+                                        elif ("ITAV" in b_type or "INTERIMAVAILABLE" in b_type) and not chosen_b:
+                                            chosen_b = b
+                                if not chosen_b:
+                                    chosen_b = b_data[0]
+
+                                if isinstance(chosen_b, dict):
+                                    amt_obj = chosen_b.get("balance_amount")
                                     if isinstance(amt_obj, dict) and "amount" in amt_obj:
                                         new_balance = round(float(amt_obj["amount"]), 2)
-                                    elif "amount" in first_b:
-                                        new_balance = round(float(first_b["amount"]), 2)
+                                    elif "amount" in chosen_b:
+                                        new_balance = round(float(chosen_b["amount"]), 2)
+
                 except Exception as e:
                     logger.warning(f"Erreur synchro solde Enable Banking {m.external_account_id}: {e}")
 

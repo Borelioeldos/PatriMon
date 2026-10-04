@@ -18,7 +18,9 @@ class MarketService:
         self._cache: Dict[str, Dict[str, Any]] = {}
         self.cache_ttl = cache_ttl
         self._currency_rates: Dict[str, float] = {"EUR": 1.0}
-        self._currency_cache_time: float = 0.0
+        self._currency_cache_times: Dict[str, float] = {}
+        self._names_cache: Dict[str, str] = {}
+
 
     # ────────────────────── Devises ──────────────────────
 
@@ -29,7 +31,8 @@ class MarketService:
             return 1.0
 
         now = time.time()
-        if now - self._currency_cache_time < CURRENCY_CACHE_TTL and curr in self._currency_rates:
+        last_fetch = self._currency_cache_times.get(curr, 0.0)
+        if (now - last_fetch) < CURRENCY_CACHE_TTL and curr in self._currency_rates:
             return self._currency_rates[curr]
 
         try:
@@ -46,7 +49,7 @@ class MarketService:
 
             if price and price > 0:
                 self._currency_rates[curr] = float(price)
-                self._currency_cache_time = now
+                self._currency_cache_times[curr] = now
                 return float(price)
         except Exception as e:
             logger.warning(f"Taux de change indisponible pour {curr}: {e}")
@@ -64,7 +67,10 @@ class MarketService:
         alias_map = {
             "SIE": "SIE.DE",
             "VOW3": "VOW3.DE",
-            "CSX5.PA": "SX5E.PA",
+            "CSX5.PA": "CSX5.AS",
+            "853292": "BMW.DE",
+            "IUSA": "IUSA.DE",
+            "BTC": "BTC-EUR",
         }
         lookup_symbol = alias_map.get(clean, clean)
         now = time.time()
@@ -93,13 +99,19 @@ class MarketService:
                     else:
                         prev_close = current_price
 
-            # Récupérer le nom officiel (appel potentiellement lent → try/except)
-            name = clean
-            try:
-                info = ticker.info
-                name = info.get("shortName") or info.get("longName") or clean
-            except Exception:
-                pass
+            # Récupérer le nom officiel (mis en cache permanente pour éviter les appels lents à ticker.info)
+            if clean in self._names_cache:
+                name = self._names_cache[clean]
+            else:
+                name = clean
+                try:
+                    info = ticker.info
+                    name = info.get("shortName") or info.get("longName") or clean
+                except Exception:
+                    pass
+                if name and name != clean:
+                    self._names_cache[clean] = name
+
 
             eur_rate = self.get_eur_rate(currency)
             price_eur = current_price * eur_rate if current_price else None

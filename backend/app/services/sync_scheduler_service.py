@@ -140,11 +140,18 @@ class SyncSchedulerService:
                 # 1. Synchronisation des soldes et transactions
                 sync_res = await open_banking_service.sync_all_balances(session)
 
-                # 2. Création ou mise à jour du snapshot de patrimoine du jour
+                # 2. Création ou mise à jour du snapshot de patrimoine du jour (non bloquant R3)
                 try:
-                    portfolio_service.get_portfolio_summary(session, force_refresh=True)
+                    def _take_snapshot():
+                        with Session(engine) as snap_session:
+                            portfolio_service.get_portfolio_summary(
+                                snap_session, force_refresh=True, record_snapshot=True
+                            )
+
+                    await asyncio.to_thread(_take_snapshot)
                 except Exception as e:
-                    logger.debug(f"Note snapshot patrimoine : {e}")
+                    logger.warning(f"Note snapshot patrimoine : {e}")
+
 
                 result = {
                     "success": True,

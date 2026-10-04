@@ -9,6 +9,7 @@ import {
   Activity, Clock, Compass, ArrowUpRight, ArrowDownRight, Award
 } from 'lucide-react';
 import { api } from '../services/api';
+import { formatEUR, formatEURPrecise } from '../utils/format';
 
 const COLORS = [
   '#0066FF', // BoursoBank Bleu
@@ -54,23 +55,6 @@ export default function AllocationsCharts({ summary }) {
     fetchBenchmark();
     return () => { isMounted = false; };
   }, [chartMode, selectedBenchmark, benchmarkPeriod]);
-
-  const formatEUR = (val) => {
-    return new Intl.NumberFormat('fr-FR', {
-      style: 'currency',
-      currency: 'EUR',
-      maximumFractionDigits: 0
-    }).format(val || 0);
-  };
-
-  const formatEURPrecise = (val) => {
-    return new Intl.NumberFormat('fr-FR', {
-      style: 'currency',
-      currency: 'EUR',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    }).format(val || 0);
-  };
 
   const CustomPieTooltip = ({ active, payload }) => {
     if (active && payload && payload.length) {

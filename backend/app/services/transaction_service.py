@@ -10,7 +10,7 @@ from sqlmodel import Session, select
 
 from app.models import (
     Transaction, TransactionCreate, TransactionRead, TransactionType,
-    Account, Holding, AssetClass
+    Account, Holding, AssetClass, INVESTMENT_ACCOUNT_TYPES
 )
 from app.services.market_service import market_service
 
@@ -103,17 +103,20 @@ class TransactionService:
                         asset_class = AssetClass.CRYPTO
 
                     pru_eur = price_eur + (fees_eur / qty if qty > 0 else 0.0)
+                    unit_cost_in_currency = round(pru_eur / eur_rate, 4) if eur_rate > 0 else (unit_price or pru_eur)
                     new_holding = Holding(
                         account_id=account.id,
                         symbol=symbol,
                         name=name or symbol,
                         asset_class=asset_class,
                         quantity=qty,
-                        unit_cost=unit_price or pru_eur,
+                        unit_cost=unit_cost_in_currency,
                         unit_cost_eur=round(pru_eur, 4),
                         current_price=unit_price,
                         currency=currency,
                         is_manual=is_manual,
+                        initial_quantity=0.0,
+                        initial_unit_cost_eur=0.0,
                     )
                     session.add(new_holding)
                     session.flush()
@@ -126,7 +129,14 @@ class TransactionService:
 
         elif tx_in.type == TransactionType.SELL:
             qty = tx_in.quantity or 0.0
-            price_eur = unit_price_eur or 0.0
+            price_eur = unit_price_eur
+            if (price_eur is None or price_eur == 0.0) and qty > 0 and amount_eur > 0:
+                price_eur = round((amount_eur + fees_eur) / qty, 4)
+                unit_price_eur = price_eur
+                if unit_price is None:
+                    unit_price = round(price_eur / eur_rate, 4) if eur_rate > 0 else price_eur
+            elif price_eur is None:
+                price_eur = 0.0
 
             if holding:
                 # Calcul de la plus-value réalisée : (Prix de Vente EUR - PRU EUR) * Qté - Frais EUR
@@ -203,20 +213,80 @@ class TransactionService:
         return transaction
 
     @staticmethod
+    def delete_transaction(session: Session, transaction_id: int) -> bool:
+        """
+        Supprime une transaction en réajustant automatiquement le solde espèces
+        du compte et en recalculant la position (quantité et PRU) depuis l'historique complet.
+        """
+        tx = session.get(Transaction, transaction_id)
+        if not tx:
+            return False
+
+        account = session.get(Account, tx.account_id)
+        holding_id = tx.holding_id
+        tx_type = tx.type
+        amount_eur = tx.amount_eur or 0.0
+
+        # Si holding_id absent mais symbole présent sur le compte, retrouver la position
+        if not holding_id and tx.symbol and account:
+            clean_sym = tx.symbol.strip().upper()
+            found_holding = session.exec(
+                select(Holding)
+                .where(Holding.account_id == account.id)
+                .where(Holding.symbol == clean_sym)
+            ).first()
+            if found_holding:
+                holding_id = found_holding.id
+
+        # 1. Réajustement automatique du solde espèces du compte
+        if account and amount_eur > 0:
+            rate = market_service.get_eur_rate(account.currency) or 1.0
+            cash_impact = amount_eur / rate
+
+            if tx_type == TransactionType.BUY:
+                # Un achat avait débité le compte -> on recrédite
+                account.cash_balance = round(account.cash_balance + cash_impact, 2)
+            elif tx_type in (TransactionType.SELL, TransactionType.DEPOSIT, TransactionType.DIVIDEND):
+                # Une vente / versement / dividende avait crédité le compte -> on redébite
+                account.cash_balance = round(account.cash_balance - cash_impact, 2)
+            elif tx_type == TransactionType.WITHDRAWAL:
+                # Un retrait avait débité le compte -> on recrédite
+                account.cash_balance = round(account.cash_balance + cash_impact, 2)
+
+            session.add(account)
+
+        # 2. Suppression de la transaction
+        session.delete(tx)
+        session.commit()
+
+        # 3. Recalcul propre de la position depuis l'historique restant
+        if holding_id:
+            TransactionService.recalculate_holding_pru(session, holding_id)
+
+        return True
+
+    @staticmethod
     def get_transaction_stats(session: Session) -> Dict[str, Any]:
         """Agrège les statistiques financières des transactions."""
-        txs = session.exec(select(Transaction)).all()
+        tx_rows = session.exec(
+            select(Transaction, Account)
+            .outerjoin(Account, Transaction.account_id == Account.id)
+        ).all()
 
         total_dividends = 0.0
         total_realized_gain = 0.0
         total_deposits = 0.0
         total_withdrawals = 0.0
+        investment_deposits = 0.0
+        investment_withdrawals = 0.0
         total_buys = 0.0
         total_sells = 0.0
         total_fees = 0.0
 
-        for t in txs:
+        for t, acc in tx_rows:
             total_fees += t.fees_eur or 0.0
+            is_inv = acc and (acc.account_type in INVESTMENT_ACCOUNT_TYPES)
+
             if t.type == TransactionType.DIVIDEND:
                 total_dividends += t.amount_eur or 0.0
             elif t.type == TransactionType.SELL:
@@ -227,16 +297,23 @@ class TransactionService:
                 total_buys += t.amount_eur or 0.0
             elif t.type == TransactionType.DEPOSIT:
                 total_deposits += t.amount_eur or 0.0
+                if is_inv:
+                    investment_deposits += t.amount_eur or 0.0
             elif t.type == TransactionType.WITHDRAWAL:
                 total_withdrawals += t.amount_eur or 0.0
+                if is_inv:
+                    investment_withdrawals += t.amount_eur or 0.0
 
         return {
-            "total_transactions": len(txs),
+            "total_transactions": len(tx_rows),
             "total_dividends_eur": round(total_dividends, 2),
             "total_realized_gain_eur": round(total_realized_gain, 2),
             "total_deposits_eur": round(total_deposits, 2),
             "total_withdrawals_eur": round(total_withdrawals, 2),
             "net_deposits_eur": round(total_deposits - total_withdrawals, 2),
+            "investment_deposits_eur": round(investment_deposits, 2),
+            "investment_withdrawals_eur": round(investment_withdrawals, 2),
+            "net_investment_deposits_eur": round(investment_deposits - investment_withdrawals, 2),
             "total_buys_eur": round(total_buys, 2),
             "total_sells_eur": round(total_sells, 2),
             "total_fees_eur": round(total_fees, 2),
@@ -247,6 +324,7 @@ class TransactionService:
         """
         Reconstitue l'historique d'un actif depuis ses transactions pour recalculer
         avec exactitude mathématique la quantité restante et le PRU pondéré.
+        Préserve la position d'ouverture initiale (initial_quantity et initial_unit_cost_eur).
         """
         holding = session.get(Holding, holding_id)
         if not holding:
@@ -258,18 +336,17 @@ class TransactionService:
             .order_by(Transaction.transaction_date.asc(), Transaction.id.asc())
         ).all()
 
-        if not txs:
-            return holding
-
-        total_qty = 0.0
-        total_cost_eur = 0.0
+        # Démarrer avec la position initiale saisie lors de la création de la position
+        total_qty = holding.initial_quantity or 0.0
+        total_cost_eur = total_qty * (holding.initial_unit_cost_eur or 0.0)
 
         for t in txs:
             if t.type == TransactionType.BUY:
                 q = t.quantity or 0.0
                 p_eur = t.unit_price_eur or 0.0
                 f_eur = t.fees_eur or 0.0
-                total_cost_eur += (q * p_eur) + f_eur
+                cost = ((q * p_eur) + f_eur) if p_eur > 0 else (t.amount_eur or 0.0)
+                total_cost_eur += cost
                 total_qty += q
             elif t.type == TransactionType.SELL:
                 q = t.quantity or 0.0
@@ -277,12 +354,17 @@ class TransactionService:
                     current_pru = total_cost_eur / total_qty
                     total_qty = max(0.0, total_qty - q)
                     total_cost_eur = total_qty * current_pru
+                else:
+                    total_qty = 0.0
+                    total_cost_eur = 0.0
 
         holding.quantity = round(total_qty, 6)
         if total_qty > 0:
             holding.unit_cost_eur = round(total_cost_eur / total_qty, 4)
             eur_rate = market_service.get_eur_rate(holding.currency or "EUR")
             holding.unit_cost = round(holding.unit_cost_eur / eur_rate, 4)
+        else:
+            holding.quantity = 0.0
 
         session.add(holding)
         session.commit()
@@ -291,3 +373,4 @@ class TransactionService:
 
 
 transaction_service = TransactionService()
+

@@ -15,8 +15,9 @@ start "PatriMon Frontend" powershell -ExecutionPolicy Bypass -NoExit -Command "c
 echo.
 echo =======================================================
 echo Application lancee avec succes !
-echo   - Frontend Web & Mobile : http://localhost:5173
+echo   - Frontend Web & Mobile : https://localhost:5173
 echo   - Backend API & Swagger : http://localhost:8000/docs
+
 echo =======================================================
 echo.
 pause

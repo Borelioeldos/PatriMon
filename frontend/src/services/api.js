@@ -1,106 +1,107 @@
 const API_BASE = '/api';
 
+/**
+ * Helper générique d'appel API avec gestion centralisée des erreurs FastAPI (detail).
+ */
+async function request(endpoint, options = {}, defaultError = "Une erreur est survenue") {
+  const url = endpoint.startsWith('http') ? endpoint : `${API_BASE}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+  const config = { ...options };
+
+  // Sérialisation JSON automatique sauf si FormData
+  if (config.body && !(config.body instanceof FormData)) {
+    config.headers = {
+      'Content-Type': 'application/json',
+      ...config.headers,
+    };
+    if (typeof config.body !== 'string') {
+      config.body = JSON.stringify(config.body);
+    }
+  }
+
+  const res = await fetch(url, config);
+
+  if (!res.ok) {
+    let detail = null;
+    try {
+      const errJson = await res.json();
+      detail = errJson.detail || errJson.message;
+    } catch (_) {
+      try {
+        detail = await res.text();
+      } catch (_) {}
+    }
+    throw new Error(detail || defaultError);
+  }
+
+  if (res.status === 204) return null;
+  return res.json();
+}
+
 export const api = {
   // ─── Portfolio ───
   async getSummary(forceRefresh = false) {
-    const res = await fetch(`${API_BASE}/portfolio/summary?force_refresh=${forceRefresh}`);
-    if (!res.ok) throw new Error("Erreur lors de la récupération du patrimoine");
-    return res.json();
+    return request(`/portfolio/summary?force_refresh=${forceRefresh}`, {}, "Erreur lors de la récupération du patrimoine");
+  },
+
+  async takeSnapshot() {
+    return request(`/portfolio/snapshot`, { method: 'POST' }, "Erreur lors de l'enregistrement de l'instantané");
   },
 
   // ─── Comptes ───
   async getAccounts() {
-    const res = await fetch(`${API_BASE}/accounts/`);
-    if (!res.ok) throw new Error("Erreur lors de la récupération des comptes");
-    return res.json();
+    return request('/accounts/', {}, "Erreur lors de la récupération des comptes");
   },
 
   async createAccount(accountData) {
-    const res = await fetch(`${API_BASE}/accounts/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(accountData),
-    });
-    if (!res.ok) throw new Error("Erreur lors de la création du compte");
-    return res.json();
+    return request('/accounts/', { method: 'POST', body: accountData }, "Erreur lors de la création du compte");
   },
 
   async updateAccount(accountId, accountData) {
-    const res = await fetch(`${API_BASE}/accounts/${accountId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(accountData),
-    });
-    if (!res.ok) throw new Error("Erreur lors de la mise à jour du compte");
-    return res.json();
+    return request(`/accounts/${accountId}`, { method: 'PUT', body: accountData }, "Erreur lors de la mise à jour du compte");
   },
 
   async deleteAccount(accountId) {
-    const res = await fetch(`${API_BASE}/accounts/${accountId}`, {
-      method: 'DELETE',
-    });
-    if (!res.ok) throw new Error("Erreur lors de la suppression du compte");
-    return res.json();
+    return request(`/accounts/${accountId}`, { method: 'DELETE' }, "Erreur lors de la suppression du compte");
   },
 
   async seedInitialAccounts() {
-    const res = await fetch(`${API_BASE}/accounts/seed-initial`, {
-      method: 'POST',
-    });
-    if (!res.ok) throw new Error("Erreur lors de l'initialisation des comptes");
-    return res.json();
+    return request('/accounts/seed-initial', { method: 'POST' }, "Erreur lors de l'initialisation des comptes");
   },
 
   // ─── Positions / Actifs (Holdings) ───
   async createHolding(holdingData) {
-    const res = await fetch(`${API_BASE}/holdings/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(holdingData),
-    });
-    if (!res.ok) throw new Error("Erreur lors de l'ajout de l'actif");
-    return res.json();
+    return request('/holdings/', { method: 'POST', body: holdingData }, "Erreur lors de l'ajout de l'actif");
   },
 
   async updateHolding(holdingId, holdingData) {
-    const res = await fetch(`${API_BASE}/holdings/${holdingId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(holdingData),
-    });
-    if (!res.ok) throw new Error("Erreur lors de la modification de l'actif");
-    return res.json();
+    return request(`/holdings/${holdingId}`, { method: 'PUT', body: holdingData }, "Erreur lors de la modification de l'actif");
   },
 
   async deleteHolding(holdingId) {
-    const res = await fetch(`${API_BASE}/holdings/${holdingId}`, {
-      method: 'DELETE',
-    });
-    if (!res.ok) throw new Error("Erreur lors de la suppression de l'actif");
-    return res.json();
+    return request(`/holdings/${holdingId}`, { method: 'DELETE' }, "Erreur lors de la suppression de l'actif");
   },
 
   // ─── Marché & Recherche ───
   async searchMarket(query) {
     if (!query || query.length < 1) return [];
-    const res = await fetch(`${API_BASE}/market/search?q=${encodeURIComponent(query)}`);
-    if (!res.ok) return [];
-    return res.json();
+    try {
+      return await request(`/market/search?q=${encodeURIComponent(query)}`);
+    } catch (_) {
+      return [];
+    }
   },
 
   async getQuote(symbol) {
-    const res = await fetch(`${API_BASE}/market/quote?symbol=${encodeURIComponent(symbol)}`);
-    if (!res.ok) return null;
-    return res.json();
+    try {
+      return await request(`/market/quote?symbol=${encodeURIComponent(symbol)}`);
+    } catch (_) {
+      return null;
+    }
   },
 
   /** Vide le cache des cotations pour forcer un rechargement complet. */
   async refreshMarketCache() {
-    const res = await fetch(`${API_BASE}/market/refresh`, {
-      method: 'POST',
-    });
-    if (!res.ok) throw new Error("Erreur lors du rafraîchissement du cache");
-    return res.json();
+    return request('/market/refresh', { method: 'POST' }, "Erreur lors du rafraîchissement du cache");
   },
 
   // ─── Transactions & PRU ───
@@ -114,237 +115,139 @@ export const api = {
     if (params.offset) query.set('offset', params.offset);
 
     const qs = query.toString();
-    const url = `${API_BASE}/transactions/${qs ? `?${qs}` : ''}`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error("Erreur lors de la récupération des transactions");
-    return res.json();
+    const url = `/transactions/${qs ? `?${qs}` : ''}`;
+    return request(url, {}, "Erreur lors de la récupération des transactions");
   },
 
   async createTransaction(txData) {
-    const res = await fetch(`${API_BASE}/transactions/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(txData),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || "Erreur lors de la création de la transaction");
-    }
-    return res.json();
+    return request('/transactions/', { method: 'POST', body: txData }, "Erreur lors de la création de la transaction");
   },
 
   async deleteTransaction(txId) {
-    const res = await fetch(`${API_BASE}/transactions/${txId}`, {
-      method: 'DELETE',
-    });
-    if (!res.ok) throw new Error("Erreur lors de la suppression de la transaction");
-    return res.json();
+    return request(`/transactions/${txId}`, { method: 'DELETE' }, "Erreur lors de la suppression de la transaction");
   },
 
   async getTransactionStats() {
-    const res = await fetch(`${API_BASE}/transactions/stats`);
-    if (!res.ok) throw new Error("Erreur lors de la récupération des statistiques de transactions");
-    return res.json();
+    return request('/transactions/stats', {}, "Erreur lors de la récupération des statistiques de transactions");
   },
 
   async recalculateHolding(holdingId) {
-    const res = await fetch(`${API_BASE}/transactions/recalculate-holding/${holdingId}`, {
-      method: 'POST',
-    });
-    if (!res.ok) throw new Error("Erreur lors du recalcul de la position");
-    return res.json();
+    return request(`/transactions/recalculate-holding/${holdingId}`, { method: 'POST' }, "Erreur lors du recalcul de la position");
   },
 
   // ─── Benchmarks ───
   async getBenchmarks() {
-    const res = await fetch(`${API_BASE}/portfolio/benchmarks`);
-    if (!res.ok) return [];
-    return res.json();
+    try {
+      return await request('/portfolio/benchmarks');
+    } catch (_) {
+      return [];
+    }
   },
 
   async getBenchmarkComparison(benchmark = 'CW8.PA', period = '1mo') {
-    const res = await fetch(`${API_BASE}/portfolio/benchmark-comparison?benchmark=${encodeURIComponent(benchmark)}&period=${encodeURIComponent(period)}`);
-    if (!res.ok) throw new Error("Erreur lors de la comparaison avec l'indice de référence");
-    return res.json();
+    return request(`/portfolio/benchmark-comparison?benchmark=${encodeURIComponent(benchmark)}&period=${encodeURIComponent(period)}`, {}, "Erreur lors de la comparaison avec l'indice de référence");
   },
 
   // ─── Épargne Entreprise (BNP PEE & PERO) ───
   async previewPeeStatement(file) {
     const formData = new FormData();
     formData.append('file', file);
-    const res = await fetch(`${API_BASE}/pee/preview-statement`, {
-      method: 'POST',
-      body: formData,
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || "Erreur lors de l'analyse du relevé");
-    }
-    return res.json();
+    return request('/pee/preview-statement', { method: 'POST', body: formData }, "Erreur lors de l'analyse du relevé");
   },
 
   async confirmPeeImport(data) {
-    const res = await fetch(`${API_BASE}/pee/confirm-import`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || "Erreur lors de la confirmation de l'import");
-    }
-    return res.json();
+    return request('/pee/confirm-import', { method: 'POST', body: data }, "Erreur lors de la confirmation de l'import");
   },
 
-  // ─── Open Banking (GoCardless DSP2) ───
+  // ─── Open Banking (Enable Banking DSP2) ───
   async getOpenBankingStatus() {
-    const res = await fetch(`${API_BASE}/open-banking/status`);
-    if (!res.ok) throw new Error("Erreur lors de la récupération de l'état Open Banking");
-    return res.json();
+    return request('/open-banking/status', {}, "Erreur lors de la récupération de l'état Open Banking");
   },
 
   async updateOpenBankingConfig(config) {
-    const res = await fetch(`${API_BASE}/open-banking/config`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(config),
-    });
-    if (!res.ok) throw new Error("Erreur mise à jour configuration");
-    return res.json();
+    return request('/open-banking/config', { method: 'POST', body: config }, "Erreur mise à jour configuration");
   },
 
   async getOpenBankingInstitutions(country = 'FR') {
-    const res = await fetch(`${API_BASE}/open-banking/institutions?country=${country}`);
-    if (!res.ok) return [];
-    return res.json();
+    try {
+      return await request(`/open-banking/institutions?country=${country}`);
+    } catch (_) {
+      return [];
+    }
   },
 
   async connectBank(institutionId, redirectUri = window.location.origin) {
-    const res = await fetch(`${API_BASE}/open-banking/connect`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ institution_id: institutionId, redirect_uri: redirectUri }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || "Erreur lors de la connexion bancaire");
-    }
-    return res.json();
+    return request('/open-banking/connect', { method: 'POST', body: { institution_id: institutionId, redirect_uri: redirectUri } }, "Erreur lors de la connexion bancaire");
   },
 
   async syncBankBalances() {
-    const res = await fetch(`${API_BASE}/open-banking/sync`, {
-      method: 'POST',
-    });
-    if (!res.ok) throw new Error("Erreur lors de la synchronisation des comptes bancaires");
-    return res.json();
+    return request('/open-banking/sync', { method: 'POST' }, "Erreur lors de la synchronisation des comptes bancaires");
   },
 
   async deleteBankConnection(connectionId) {
-    const res = await fetch(`${API_BASE}/open-banking/connection/${connectionId}`, {
-      method: 'DELETE',
-    });
-    if (!res.ok) throw new Error("Erreur lors de la suppression de la liaison bancaire");
-    return res.json();
+    return request(`/open-banking/connection/${connectionId}`, { method: 'DELETE' }, "Erreur lors de la suppression de la liaison bancaire");
   },
 
   async exchangeOpenBankingSession(code, state = null) {
-    const res = await fetch(`${API_BASE}/open-banking/session`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, state }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || "Erreur validation session");
-    }
-    return res.json();
+    return request('/open-banking/session', { method: 'POST', body: { code, state } }, "Erreur validation session");
   },
 
   async getOpenBankingKeys() {
-    const res = await fetch(`${API_BASE}/open-banking/keys`);
-    if (!res.ok) return { has_keys: false, public_key: '' };
-    return res.json();
+    try {
+      return await request('/open-banking/keys');
+    } catch (_) {
+      return { has_keys: false, public_key: '' };
+    }
   },
 
   async generateOpenBankingKeyPair(force = false) {
-    const res = await fetch(`${API_BASE}/open-banking/generate-keys?force=${force}`, {
-      method: 'POST',
-    });
-    if (!res.ok) throw new Error("Erreur lors de la récupération des clés RSA");
-    return res.json();
+    return request(`/open-banking/generate-keys?force=${force}`, { method: 'POST' }, "Erreur lors de la récupération des clés RSA");
   },
 
   // ─── Auto-enrichissement & Catégories ───
   async enrichTransaction(payload) {
-    const res = await fetch(`${API_BASE}/transactions/enrich`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) return payload;
-    return res.json();
+    try {
+      return await request('/transactions/enrich', { method: 'POST', body: payload });
+    } catch (_) {
+      return payload;
+    }
   },
 
   async getTransactionCategories() {
-    const res = await fetch(`${API_BASE}/transactions/categories`);
-    if (!res.ok) return [];
-    return res.json();
+    try {
+      return await request('/transactions/categories');
+    } catch (_) {
+      return [];
+    }
   },
 
   // ─── Planification & Synchro Automatique Régulière ───
   async getSchedulerStatus() {
-    const res = await fetch(`${API_BASE}/open-banking/scheduler`);
-    if (!res.ok) throw new Error("Erreur récupération état synchronisation automatique");
-    return res.json();
+    return request('/open-banking/scheduler', {}, "Erreur récupération état synchronisation automatique");
   },
 
   async updateSchedulerConfig(config) {
-    const res = await fetch(`${API_BASE}/open-banking/scheduler/config`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(config),
-    });
-    if (!res.ok) throw new Error("Erreur mise à jour planification");
-    return res.json();
+    return request('/open-banking/scheduler/config', { method: 'POST', body: config }, "Erreur mise à jour planification");
   },
 
   async triggerSchedulerSync() {
-    const res = await fetch(`${API_BASE}/open-banking/scheduler/trigger`, {
-      method: 'POST',
-    });
-    if (!res.ok) throw new Error("Erreur déclenchement synchronisation");
-    return res.json();
+    return request('/open-banking/scheduler/trigger', { method: 'POST' }, "Erreur déclenchement synchronisation");
   },
 
   async syncBankTransactions() {
-    const res = await fetch(`${API_BASE}/open-banking/sync-transactions`, {
-      method: 'POST',
-    });
-    if (!res.ok) throw new Error("Erreur synchronisation transactions");
-    return res.json();
+    return request('/open-banking/sync-transactions', { method: 'POST' }, "Erreur synchronisation transactions");
   },
 
   // ─── Google Drive Bourse & Investissements ───
   async getDriveTree() {
-    const res = await fetch(`${API_BASE}/google-drive/tree`);
-    if (!res.ok) throw new Error("Erreur récupération arborescence Google Drive");
-    return res.json();
+    return request('/google-drive/tree', {}, "Erreur récupération arborescence Google Drive");
   },
 
   async syncDriveBourse() {
-    const res = await fetch(`${API_BASE}/google-drive/sync`, {
-      method: 'POST',
-    });
-    if (!res.ok) throw new Error("Erreur synchronisation Google Drive Bourse");
-    return res.json();
+    return request('/google-drive/sync', { method: 'POST' }, "Erreur synchronisation Google Drive Bourse");
   },
 
   async getDriveLogs(limit = 30) {
-    const res = await fetch(`${API_BASE}/google-drive/logs?limit=${limit}`);
-    if (!res.ok) throw new Error("Erreur récupération historique Google Drive");
-    return res.json();
+    return request(`/google-drive/logs?limit=${limit}`, {}, "Erreur récupération historique Google Drive");
   },
 };
-
-

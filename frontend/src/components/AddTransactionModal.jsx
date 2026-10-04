@@ -47,8 +47,15 @@ export default function AddTransactionModal({
   const [amount, setAmount] = useState('');
   const [fees, setFees] = useState('0');
   const [category, setCategory] = useState('Investissement & Épargne');
-  const [categoriesList, setCategoriesList] = useState(DEFAULT_CATEGORIES);
-  const [transactionDate, setTransactionDate] = useState(new Date().toISOString().split('T')[0]);
+  const getTodayLocalDate = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const [transactionDate, setTransactionDate] = useState(getTodayLocalDate());
   const [currency, setCurrency] = useState('EUR');
   const [notes, setNotes] = useState('');
   
@@ -238,23 +245,30 @@ export default function AddTransactionModal({
     computedTotal = customAmountNum;
   }
 
-  // Calcul du nouveau PRU estimé pour un achat
+  // Calcul du nouveau PRU estimé pour un achat (F8: conversion devise vers EUR si nécessaire)
   const activeHolding = availableHoldings.find(h => h.id.toString() === selectedHoldingId);
   let estimatedNewPru = null;
+  let estimatedGain = null;
+
+  let priceNumEur = priceNum;
+  if (currency !== 'EUR' && activeHolding?.current_price && activeHolding?.current_price_eur) {
+    const fxRate = activeHolding.current_price_eur / activeHolding.current_price;
+    priceNumEur = priceNum * fxRate;
+  }
+
   if (type === 'buy' && activeHolding && qtyNum > 0 && priceNum > 0) {
     const oldQty = activeHolding.quantity || 0;
-    const oldCost = activeHolding.unit_cost_eur || 0;
+    const oldCostEur = activeHolding.unit_cost_eur || 0;
     const newQty = oldQty + qtyNum;
     if (newQty > 0) {
-      estimatedNewPru = ((oldQty * oldCost) + (qtyNum * priceNum) + feesNum) / newQty;
+      estimatedNewPru = ((oldQty * oldCostEur) + (qtyNum * priceNumEur) + feesNum) / newQty;
     }
   }
 
   // Plus-value estimée sur vente
-  let estimatedGain = null;
   if (type === 'sell' && activeHolding && qtyNum > 0 && priceNum > 0) {
-    const pru = activeHolding.unit_cost_eur || 0;
-    estimatedGain = ((priceNum - pru) * qtyNum) - feesNum;
+    const oldCostEur = activeHolding.unit_cost_eur || 0;
+    estimatedGain = ((priceNumEur - oldCostEur) * qtyNum) - feesNum;
   }
 
   const handleSubmit = async (e) => {

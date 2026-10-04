@@ -1,32 +1,17 @@
 import React from 'react';
 import { TrendingUp, TrendingDown, PiggyBank, Landmark, ShieldCheck, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { formatEUR, formatEURPrecise, formatEURCompact } from '../utils/format';
 
 export default function KPICards({ summary }) {
   const netWorth = summary?.total_net_worth || 0;
   const invested = summary?.total_invested || 0;
   const gain = summary?.total_gain || 0;
   const gainPct = summary?.total_gain_percent || 0;
-  const totalCash = summary?.total_cash || 0;
+  // F7: Liquidités incluant les livrets d'épargne (total_cash_and_savings)
+  const totalCash = summary?.total_cash_and_savings ?? summary?.total_cash ?? 0;
 
   const isPositive = gain >= 0;
   const cashRatio = netWorth > 0 ? ((totalCash / netWorth) * 100).toFixed(1) : 0;
-
-  const formatEUR = (val) => {
-    return new Intl.NumberFormat('fr-FR', {
-      style: 'currency',
-      currency: 'EUR',
-      maximumFractionDigits: 0
-    }).format(val || 0);
-  };
-
-  const formatEURPrecise = (val) => {
-    return new Intl.NumberFormat('fr-FR', {
-      style: 'currency',
-      currency: 'EUR',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    }).format(val || 0);
-  };
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -70,7 +55,7 @@ export default function KPICards({ summary }) {
           {isPositive ? `+${formatEURPrecise(gain)}` : formatEURPrecise(gain)}
         </div>
         <div className="mt-3 flex items-center gap-2 text-xs text-slate-400">
-          <span>Sur investissement de <strong className="text-slate-200">{formatEUR(invested)}</strong></span>
+          <span>Sur investissement de <strong className="text-slate-200">{formatEURCompact(invested)}</strong></span>
         </div>
       </div>
 

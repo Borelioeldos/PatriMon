@@ -29,6 +29,16 @@ class AccountType(str, Enum):
     OTHER = "other"
 
 
+INVESTMENT_ACCOUNT_TYPES = {
+    AccountType.PEA,
+    AccountType.CTO,
+    AccountType.CRYPTO,
+    AccountType.PEE,
+    AccountType.PERO,
+}
+
+
+
 class Institution(str, Enum):
     BOURSOBANK = "BoursoBank"
     REVOLUT = "Revolut"
@@ -116,6 +126,8 @@ class HoldingBase(SQLModel):
     current_price: Optional[float] = None   # Dernier prix unitaire coté
     currency: str = "EUR"          # Devise de cotation (EUR, USD…)
     is_manual: bool = False        # True → prix non récupéré via Yahoo (ex: PEE FCPE)
+    initial_quantity: float = 0.0          # Quantité d'ouverture initiale (pour préserver le solde initial sans tx)
+    initial_unit_cost_eur: float = 0.0     # PRU d'ouverture initial en EUR
     notes: Optional[str] = None
 
 
@@ -126,8 +138,8 @@ class Holding(HoldingBase, table=True):
     account: Optional[Account] = Relationship(back_populates="holdings")
     transactions: List["Transaction"] = Relationship(
         back_populates="holding",
-        cascade_delete=True,
     )
+
 
 
 class HoldingCreate(SQLModel):
@@ -217,7 +229,10 @@ class PortfolioSnapshot(SQLModel, table=True):
     total_invested: float         # Capital total (PRU + liquidités)
     total_gain: float             # Plus-value latente totale (€)
     total_gain_percent: float     # Plus-value latente (%)
+    investment_net_worth: Optional[float] = None   # Valeur des actifs investis seuls (€)
+    investment_invested: Optional[float] = None    # Capital investi seuls (€)
     created_at: datetime = Field(default_factory=get_utc_now)
+
 
 
 # ═══════════════════════════ Open Banking DSP2 ═══════════════════════════

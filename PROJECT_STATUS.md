@@ -8,8 +8,8 @@
 ## 1. Vue d'Ensemble & Objectif du Projet
 
 **PatriMon** est une application web personnelle de suivi de patrimoine en temps réel, conçue pour être :
-- **Souveraine & locale** : les données sont stockées en local sur la machine de l'utilisateur (base SQLite `patrimoines.db`), sans abonnement payant ni dépendance cloud obligatoire.
-- **Temps réel** : cotations en direct des actifs boursiers et cryptos via Yahoo Finance (`yfinance`), avec conversion automatique des devises en EUR.
+- **Souveraine & locale** : les données sont stockées en local sur la machine de l'utilisateur (base SQLite patrimoines.db), sans abonnement payant ni dépendance cloud obligatoire.
+- **Temps réel** : cotations en direct des actifs boursiers et cryptos via Yahoo Finance (yfinance), avec conversion automatique des devises en EUR.
 - **Multi-établissements** : adaptée précisément aux comptes réels de l'utilisateur (**Borel**) :
   1. **BoursoBank** : Compte courant + PEA (ETF World CW8.PA, S&P 500...).
   2. **Revolut** : Compte courant + Coffres épargne + CTO (Actions US ex: AAPL) + Crypto (BTC, ETH...).
@@ -21,13 +21,13 @@
 
 ## 2. Architecture Technique & Fichiers Clés
 
-```
+
 Suivie_Patrimoine/
 ├── backend/
 │   ├── app/
-│   │   ├── database.py              # Configuration SQLite via SQLModel (tables: account, holding, portfoliosnapshot, transaction, bankconnection, bankaccountmapping)
-│   │   ├── models.py                # Modèles SQLModel : Account, Holding, PortfolioSnapshot, Transaction, BankConnection, BankAccountMapping
-│   │   ├── main.py                  # FastAPI app v3.0 avec CORS et inclusion des 12 groupes de routes
+│   │   ├── database.py              # Configuration SQLite via SQLModel (tables: account, holding, portfoliosnapshot, transaction, bankconnection, bankaccountmapping, drivesynclog)
+│   │   ├── models.py                # Modèles SQLModel : Account, Holding, PortfolioSnapshot, Transaction, BankConnection, BankAccountMapping, DriveSyncLog
+│   │   ├── main.py                  # FastAPI app v3.0 avec CORS et inclusion des 13 groupes de routes
 │   │   ├── routers/
 │   │   │   ├── accounts.py          # CRUD comptes + endpoint /seed-initial
 │   │   │   ├── holdings.py          # CRUD holdings (gère actions, crypto, fonds PEE et livrets)
@@ -35,18 +35,23 @@ Suivie_Patrimoine/
 │   │   │   ├── market.py            # Recherche de tickers et cotation unitaire
 │   │   │   ├── transactions.py      # CRUD transactions, calcul PRU, stats de flux (Phase 2)
 │   │   │   ├── pee.py               # Phase 3 : Import relevés PDF/CSV BNP Épargne Entreprise & PERO
-│   │   │   └── open_banking.py      # Phase 3 : Synchro bancaire DSP2 Enable Banking & Mode Démo
+│   │   │   ├── open_banking.py      # Phase 3 : Synchro bancaire DSP2 Enable Banking & Mode Démo
+│   │   │   └── google_drive.py      # Phase 3 : Synchro cloud Google Drive Bourse (arborescence, import 1-clic, logs)
 │   │   └── services/
-│   │       ├── market_service.py    # Service yfinance avec cache 30s + conversion EUR
+│   │       ├── market_service.py    # Service yfinance avec cache 30s + conversion EUR et alias (BMW.DE, IUSA.DE, SX5E.AS, BTC-EUR)
 │   │       ├── portfolio_service.py # Agrégation financière, calculs plus-values, snapshots 30j
 │   │       ├── transaction_service.py # Moteur PRU pondéré (Weighted Average Cost), cessions, ajustement cash
 │   │       ├── performance_service.py # Moteur TWR (Time-Weighted Return) & MWR / TRI (XIRR)
 │   │       ├── benchmark_service.py # Comparateur d'indices (MSCI World, S&P 500, CAC 40, Bitcoin)
 │   │       ├── pee_import_service.py# Phase 3 : Parseur PDF officiel BNP EE (Schneider Electric) & CSV
-│   │       └── open_banking_service.py# Phase 3 : Client API Enable Banking DSP2 (JWT RS256) + auto-création comptes
+│   │       ├── open_banking_service.py# Phase 3 : Client API Enable Banking DSP2 (JWT RS256) + auto-création comptes
+│   │       ├── google_drive_service.py# Phase 3 : Client Google Drive API v3 (OAuth auto-refresh, stream mémoire, md5Checksum)
+│   │       ├── bourso_trade_parser.py # Phase 3 : Parseur avis d'opérés Boursorama PEA (ordres, PRU, dédoublonnage)
+│   │       ├── bourso_statement_parser.py # Phase 3 : Parseur relevé de titres mensuel Boursorama PEA (cash + ETF)
+│   │       └── revolut_csv_parser.py  # Phase 3 : Parseur multi-CSV Revolut (CTO, PnL, Crypto BTC, dividendes 57,18 €)
 │   ├── certs/                       # Phase 3 : Paires de clés RSA 2048 statiques permanentes (.pem)
 │   ├── open_banking_config.json     # Configuration locale sécurisée (Application ID, clés statiques)
-│   ├── requirements.txt             # fastapi, uvicorn, sqlmodel, yfinance, httpx, pypdf, pyjwt, cryptography
+│   ├── requirements.txt             # fastapi, uvicorn, sqlmodel, yfinance, httpx, pypdf, pyjwt, cryptography, google-api-python-client, google-auth
 │   ├── run.py                       # Lanceur Uvicorn sur 0.0.0.0:8000
 │   └── patrimoines.db               # Base SQLite locale
 ├── frontend/
@@ -63,7 +68,8 @@ Suivie_Patrimoine/
 │   │   │   ├── AddAssetModal.jsx    # Modal d'ajout à 3 onglets (Livrets, Bourse/Crypto, PEE)
 │   │   │   ├── AddAccountModal.jsx  # Modal création nouveau compte
 │   │   │   ├── PeeImportModal.jsx   # Phase 3 : Modal drag & drop relevé PDF/CSV BNP EE + détection PERO
-│   │   │   └── BankSyncModal.jsx    # Phase 3 : Modal Open Banking DSP2 (BoursoBank, BNP, Revolut)
+│   │   │   ├── BankSyncModal.jsx    # Phase 3 : Modal Open Banking DSP2 (BoursoBank, BNP, Revolut)
+│   │   │   └── DriveSyncModal.jsx   # Phase 3 : Modal Google Drive Bourse (état cloud, synchro 1-clic, logs)
 │   │   ├── App.jsx                  # State principal, polling 30s, gestion des modals
 │   │   └── main.jsx / index.css     # Montage React et styles Tailwind CSS
 │   ├── vite.config.js               # Proxy Vite vers http://127.0.0.1:8000 + host 0.0.0.0
@@ -73,7 +79,7 @@ Suivie_Patrimoine/
 ├── plan_initial.md                  # Premier plan d'action de cadrage
 ├── plan_phase_3.md                  # Plan d'exécution validé Phase 3
 └── PROJECT_STATUS.md                # [CE FICHIER] Guide de passation & Todo
-```
+
 
 ---
 
@@ -81,10 +87,10 @@ Suivie_Patrimoine/
 
 ### Phase 1 Complète
 - [x] **Backend FastAPI opérationnel** :
-  - Base SQLite configurée avec initialisation automatique des tables (`init_db`).
-  - Prise en charge des devises étrangères avec taux de change dynamiques (`USD`, `GBP` convertis en `EUR`).
+  - Base SQLite configurée avec initialisation automatique des tables (init_db).
+  - Prise en charge des devises étrangères avec taux de change dynamiques (USD, GBP convertis en EUR).
   - Cache en mémoire optimisé à 30 secondes pour les flux de cotations.
-  - Endpoint de pré-remplissage (`/api/accounts/seed-initial`) avec les 4 institutions de l'utilisateur.
+  - Endpoint de pré-remplissage (/api/accounts/seed-initial) avec les 4 institutions de l'utilisateur.
   - Gestion unifiée des actifs : Bourse, Crypto, Fonds manuels PEE, et Livrets d'épargne (taux fixe 1,00 €).
 - [x] **Frontend React + Tailwind + Recharts** :
   - **Auto-Refresh temps réel (30 secondes)** avec indicateur vert clignotant et compte à rebours visuel.
@@ -92,68 +98,87 @@ Suivie_Patrimoine/
   - **Gestion dédiée de l'épargne / livrets BNP** (édition en 1 clic).
 
 ### Phase 2 Complète (Historique des Transactions & Calculs Financiers Avancés)
-- [x] **Table des Transactions (`Transaction`) & Moteur PRU** :
-  - Types d'opérations : Achat (`BUY`), Vente (`SELL`), Versement (`DEPOSIT`), Retrait (`WITHDRAWAL`), Dividende reçu (`DIVIDEND`).
+- [x] **Table des Transactions (Transaction) & Moteur PRU** :
+  - Types d'opérations : Achat (BUY), Vente (SELL), Versement (DEPOSIT), Retrait (WITHDRAWAL), Dividende reçu (DIVIDEND).
   - Formule du PRU pondéré (Weighted Average Cost) calculée en temps réel lors de chaque achat :  
-    `Nouveau_PRU = (Ancienne_Qté × Ancien_PRU + Qté_Achetée × Prix_Achat + Frais) / Nouvelle_Qté`.
+    Nouveau_PRU = (Ancienne_Qté × Ancien_PRU + Qté_Achetée × Prix_Achat + Frais) / Nouvelle_Qté.
   - Calcul automatique des plus-values réalisées lors des cessions de titres.
-  - Débit / Crédit synchronisé du solde espèces (`cash_balance`) du compte associé.
-  - Endpoint de recalcul rétroactif complet (`POST /api/transactions/recalculate-holding/{id}`).
+  - Débit / Crédit synchronisé du solde espèces (cash_balance) du compte associé.
+  - Endpoint de recalcul rétroactif complet (POST /api/transactions/recalculate-holding/{id}).
 - [x] **Métriques de Performance Réelles (Standards GIPS & Actuariat)** :
   - **TWR (Time-Weighted Return)** : Rendement financier pur des actifs isolant totalement les entrées/sorties de fonds.
   - **MWR / TRI (Taux de Rendement Interne / XIRR)** : Rendement effectif pondéré par l'argent prenant en compte la date exacte de chaque versement/retrait, avec réconciliation des capitaux d'origine.
-  - **Composant `PerformanceMetrics.jsx`** : Cartes visuelles TWR %, TRI %, total des dividendes reçus en cash et total des plus-values réalisées.
+  - **Composant PerformanceMetrics.jsx** : Cartes visuelles TWR %, TRI %, total des dividendes reçus en cash et total des plus-values réalisées.
 - [x] **Comparaison avec des Indices de Référence (Benchmarks)** :
-  - Indices intégrés : **MSCI World** (`CW8.PA`), **S&P 500** (`^GSPC`), **CAC 40** (`^FCHI`), **Bitcoin** (`BTC-EUR`).
+  - Indices intégrés : **MSCI World** (CW8.PA), **S&P 500** (^GSPC), **CAC 40** (^FCHI), **Bitcoin** (BTC-EUR).
   - Périodes sélectionnables : 1 mois, 3 mois, 6 mois, 1 an.
   - Graphique multi-courbes en % avec normalisation en base 0% et calcul d'**Alpha** (surperformance / sous-performance).
 - [x] **Interface Journal & Modals** :
-  - `TransactionsList.jsx` : Journal filtrable par type et par compte avec suppression et statuts colorés.
-  - `AddTransactionModal.jsx` : Formulaire interactif avec simulation en direct du nouveau PRU et de la plus-value attendue.
+  - TransactionsList.jsx : Journal filtrable par type et par compte avec suppression et statuts colorés.
+  - AddTransactionModal.jsx : Formulaire interactif avec simulation en direct du nouveau PRU et de la plus-value attendue.
 
 ### Phase 3 Complète : Automatisation des Flux Externes, DSP2 (Enable Banking), Synchro Régulière & Auto-Remplissage des Transactions
 
 - [x] **Transition vers l'API Enable Banking (PSD2 / DSP2)** :
   - Remplacement complet de GoCardless par le standard européen ouvert **Enable Banking**.
-  - Signature locale et souveraine des requêtes HTTP via **JWT asymétrique RS256** (`cryptography` et `pyjwt`).
-  - Prise en charge des contraintes réglementaires européennes DSP2 (durée de validité `valid_until` bridée à 89 jours, formats ASPSP stricts).
+  - Signature locale et souveraine des requêtes HTTP via **JWT asymétrique RS256** (cryptography et pyjwt).
+  - Prise en charge des contraintes réglementaires européennes DSP2 (durée de validité valid_until bridée à 89 jours, formats ASPSP stricts).
   - Mode Démo / Simulation instantané maintenu pour tester l'UI et les flux sans compte bancaire réel.
 
 - [x] **Clés RSA Statiques & Permanentes (Zéro Clé Dynamique)** :
-  - Paire de clés RSA 2048-bit permanente stockée dans [`backend/certs/enable_banking_public.pem`](file:///c:/Users/Borel/Desktop/Suivie_Patrimoine/backend/certs/enable_banking_public.pem) et [`backend/certs/enable_banking_private.pem`](file:///c:/Users/Borel/Desktop/Suivie_Patrimoine/backend/certs/enable_banking_private.pem).
-  - Protection contre les régénérations intempestives et copie 1-clic dans `BankSyncModal.jsx`.
+  - Paire de clés RSA 2048-bit permanente stockée dans [backend/certs/enable_banking_public.pem](file:///c:/Users/Borel/Desktop/Suivie_Patrimoine/backend/certs/enable_banking_public.pem) et [backend/certs/enable_banking_private.pem](file:///c:/Users/Borel/Desktop/Suivie_Patrimoine/backend/certs/enable_banking_private.pem).
+  - Protection contre les régénérations intempestives et copie 1-clic dans BankSyncModal.jsx.
 
-- [x] **Synchronisation Automatique & Périodique en Tâche de Fond (`sync_scheduler_service.py`)** :
-  - Moteur de planification asynchrone non bloquant intégré au cycle de vie FastAPI (`lifespan`).
+- [x] **Synchronisation Automatique & Périodique en Tâche de Fond (sync_scheduler_service.py)** :
+  - Moteur de planification asynchrone non bloquant intégré au cycle de vie FastAPI (lifespan).
   - Fréquence paramétrable en 1 clic : **1 heure**, **4 heures (recommandé)**, **12 heures**, ou **24 heures**.
-  - Persistance dans [`backend/sync_scheduler_config.json`](file:///c:/Users/Borel/Desktop/Suivie_Patrimoine/backend/sync_scheduler_config.json).
+  - Persistance dans [backend/sync_scheduler_config.json](file:///c:/Users/Borel/Desktop/Suivie_Patrimoine/backend/sync_scheduler_config.json).
   - Synchronisation automatique et conjointe :
     1. Soldes bancaires réels de tous les comptes liés.
     2. Téléchargement et intégration des nouvelles transactions.
-    3. Actualisation du snapshot de patrimoine journalier (`PortfolioSnapshot`).
-  - Nouvel onglet dédié dans `BankSyncModal.jsx` avec état en temps réel, compte à rebours avant la prochaine exécution, switch d'activation et bouton de déclenchement forcé.
+    3. Actualisation du snapshot de patrimoine journalier (PortfolioSnapshot).
+  - Nouvel onglet dédié dans BankSyncModal.jsx avec état en temps réel, compte à rebours avant la prochaine exécution, switch d'activation et bouton de déclenchement forcé.
 
-- [x] **Remplissage Automatique & Catégorisation Intelligente des Transactions (`transaction_enricher.py`)** :
-  - **Saisie manuelle assistée (`AddTransactionModal.jsx`)** :
-    - Détection automatique dès la saisie du symbole / ticker (ex: `CW8.PA`, `AAPL`, `BTC-EUR`) : récupération en direct du nom officiel, du cours actuel de marché et de la devise.
-    - Calcul mathématique croisé temps réel : la quantité renseigne le montant total (`quantité × cours + frais`), ou le montant renseigne la quantité suggérée.
+- [x] **Remplissage Automatique & Catégorisation Intelligente des Transactions (transaction_enricher.py)** :
+  - **Saisie manuelle assistée (AddTransactionModal.jsx)** :
+    - Détection automatique dès la saisie du symbole / ticker (ex: CW8.PA, AAPL, BTC-EUR) : récupération en direct du nom officiel, du cours actuel de marché et de la devise.
+    - Calcul mathématique croisé temps réel : la quantité renseigne le montant total (quantité × cours + frais), ou le montant renseigne la quantité suggérée.
     - Pré-remplissage automatique des catégories et suggestions d'intitulés / notes.
     - Raccourcis en 1 clic (Presets) pour les flux récurrents : *Salaire Schneider*, *Courses Carrefour*, *EDF / TotalEnergies*, *Abonnements*, *SNCF*, *Virement Épargne*.
   - **Synchronisation bancaire automatique DSP2** :
-    - Détection du débit/crédit (`credit_debit_indicator`), normalisation du montant et détection de l'opération (`DEPOSIT`, `WITHDRAWAL`, `DIVIDEND`, `BUY`).
-    - Nettoyage automatique des libellés bancaires bruts (suppression des préfixes techniques `PAIEMENT CARTE`, `PRLV SEPA`, dates, codes postaux) pour extraire le vrai nom du tiers / commerçant.
+    - Détection du débit/crédit (credit_debit_indicator), normalisation du montant et détection de l'opération (DEPOSIT, WITHDRAWAL, DIVIDEND, BUY).
+    - Nettoyage automatique des libellés bancaires bruts (suppression des préfixes techniques PAIEMENT CARTE, PRLV SEPA, dates, codes postaux) pour extraire le vrai nom du tiers / commerçant.
     - Classification automatique parmi 12 catégories intelligentes (*Alimentation & Courses*, *Logement & Énergie*, *Revenus & Salaires*, *Investissement & Épargne*, *Abonnements & Médias*, etc.).
-    - Déduplication infaillible via `external_id` : aucun risque de doublon lors des synchronisations régulières.
-  - **Journal des flux (`TransactionsList.jsx`)** :
+    - Déduplication infaillible via external_id : aucun risque de doublon lors des synchronisations régulières.
+  - **Journal des flux (TransactionsList.jsx)** :
     - Colonne et badges de catégories colorés.
     - Filtre par catégorie dans la barre d'outils.
-    - Badge `DSP2` identifiant les opérations synchronisées automatiquement.
+    - Badge DSP2 identifiant les opérations synchronisées automatiquement.
 
 - [x] **Automatisation BNP Épargne Entreprise (PEE & PERO Cardif Retraite)** :
-  - Parseur PDF officiel (`pee_import_service.py`) calibré sur le relevé de situation Schneider Electric France / BNP Paribas.
+  - Parseur PDF officiel (pee_import_service.py) calibré sur le relevé de situation Schneider Electric France / BNP Paribas.
   - Séparation automatique entre le **PEE** (fonds 5 ans bloqués) et le **PERO Retraite** (Cardif Retraite).
   - Rétro-ingénierie automatique de la VL unitaire et du PRU unitaire à partir des plus-values et des parts du document.
-  - Modal frontend ergonomique `PeeImportModal.jsx` avec prévisualisation en deux volets et injection en 1 clic dans `patrimoines.db`.
+  - Modal frontend ergonomique PeeImportModal.jsx avec prévisualisation en deux volets et injection en 1 clic dans patrimoines.db.
+
+- [x] **Synchronisation Directe Cloud Google Drive Bourse (API v3 & Parseurs Spécialisés)** :
+  - **Connexion Cloud Officielle (google_drive_service.py)** :
+    - Connexion directe à l'API Google Drive v3 via OAuth avec rafraîchissement automatique de jeton d'accès sans dépendance sur un disque local.
+    - Exploration récursive du dossier officiel Document_perso > Bourse (1nA7R5KYPgqV6Y6PwvysZDp4B3A3-urmQ).
+    - Dédoublonnage strict par empreinte md5Checksum et historique stocké dans la table SQLite DriveSyncLog.
+  - **Moteur Boursorama PEA (bourso_trade_parser.py & bourso_statement_parser.py)** :
+    - Ingestion de **18 avis d'opérés réels** d'ETF (*Amundi Emerging ESG, BNP S&P 500, iShares MSCI World, Euro Stoxx 50*).
+    - Extraction automatique des cours d'exécution, quantités, frais de courtage, dates et dédoublonnage par référence d'ordre unique (external_id = bourso_trade_...).
+    - Recalcul dynamique du PRU pondéré et mise à jour du solde espèces PEA (**85,80 €**) et des positions via le relevé mensuel.
+  - **Moteur Multi-CSV Revolut CTO & Crypto (revolut_csv_parser.py)** :
+    - Détection et parsing automatique des 4 exports (trading-account-statement, trading-pnl-statement, crypto-account-statement, consolidated-statement).
+    - Gestion fine des ordres d'actions US et européennes avec conversion dynamique des devises via FX Rate.
+    - **Dividendes Encaissés (57,18 €)** : Ingestion et consolidation des 25 opérations de dividendes perçus (Apple, Nvidia, BMW, Stellantis, Siemens, Volkswagen, TSMC, iShares S&P 500) avec catégorisation en Revenus de capitaux.
+    - **Cryptomonnaies (Bitcoin BTC-EUR)** : Ingestion des 10 ordres d'achat réels avec parsing insensible aux séparateurs de milliers (ex: €93,126.88), normalisation des dates avec espaces insécables unicode (\u202f), PRU pondéré exact (**78 721,87 €**), capital investi réel (**1 408,57 €**), cotation live Yahoo Finance (BTC-EUR) et calcul de performance mathématiquement exact (**-3,67% / -51,76 €**).
+  - **Interface React Dédiée (DriveSyncModal.jsx & Navbar.jsx)** :
+    - Bouton « Google Drive » dans le header avec badge cloud temps réel.
+    - Modal d'état listant les 24 fichiers cloud répartis par établissement (*Bourso*, *Revolut*, *BNP*).
+    - Déclencheur 1-clic « Synchroniser depuis Google Drive » avec synthèse immédiate des opérations et historique complet.
 
 ---
 
@@ -167,8 +192,8 @@ Suivie_Patrimoine/
   - Projection dynamique à 5, 10, 20 ans selon un rendement annuel moyen attendu et un effort d'épargne mensuel programmable.
 
 ### Phase 5 : Déploiement Permanent (Home Assistant OS / Vieux PC)
-- [ ] Créer un `Dockerfile` multi-stage pour le backend FastAPI et le frontend Vite.
-- [ ] Créer un `docker-compose.yml` avec volume persistant pour SQLite.
+- [ ] Créer un Dockerfile multi-stage pour le backend FastAPI et le frontend Vite.
+- [ ] Créer un docker-compose.yml avec volume persistant pour SQLite.
 - [ ] Documenter le déploiement sur le vieux PC sous **Home Assistant OS** (via Portainer ou add-on local) pour un accès sécurisé 24/7 depuis le smartphone sur le Wi-Fi local.
 
 ---
@@ -176,26 +201,26 @@ Suivie_Patrimoine/
 ## 5. Comment Lancer le Projet (Cheat Sheet)
 
 ### Lancement Rapide (Windows)
-Double-cliquer sur `start.bat` à la racine.
+Double-cliquer sur start.bat à la racine.
 
 ### Lancement Manuel
 
 #### Terminal 1 — Backend :
-```powershell
+powershell
 cd backend
 $env:PYTHONPATH = (Get-Location).Path
 python run.py
-```
-- API : `http://localhost:8000`
-- Swagger Docs : `http://localhost:8000/docs`
+
+- API : http://localhost:8000
+- Swagger Docs : http://localhost:8000/docs
 
 #### Terminal 2 — Frontend :
-```powershell
+powershell
 cd frontend
 npm.cmd run dev
-```
-- App Web : `http://localhost:5173`
-- Accès Mobile : `http://<IP_LOCALE_DU_PC>:5173`
+
+- App Web : http://localhost:5173
+- Accès Mobile : http://<IP_LOCALE_DU_PC>:5173
 
 ---
 
@@ -207,4 +232,16 @@ npm.cmd run dev
    - **Nom de banque (ASPSP)** : Doit respecter la casse officielle exacte (`Mock ASPSP`, `BBVA`, `BoursoBank`).
    - **Redirect URL** : Doit matcher au caractère près celle configurée dans la console Enable Banking (ex: `http://localhost:5173/` ou `https://localhost:5173`).
    - **Sandbox vs Production** : L'environnement Sandbox d'Enable Banking ne liste que `Mock ASPSP` et `BBVA`. Pour voir apparaître **BoursoBank**, **BNP Paribas**, **Revolut**, l'application doit être créée en environnement **Production** sur la console Enable Banking.
-4. **Mettre à jour ce fichier (`PROJECT_STATUS.md`)** dès qu'une nouvelle fonctionnalité majeure est achevée.
+4. **Google Drive API (v3) & Authentification OAuth** :
+   - Les requêtes vers Google Drive utilisent le jeton OAuth avec rafraîchissement automatique via `https://oauth2.googleapis.com/token`.
+   - Ne jamais dépendre d'une lettre de lecteur local (ex: `G:\`) : l'API Cloud directe garantit une souveraineté totale et prépare la conteneurisation Docker.
+5. **Robustesse du Parsing CSV Financier (Revolut & Courtiers)** :
+   - **Séparateurs de milliers** : Toujours détecter si une virgule précède un point (ex: `€93,126.88`) afin de supprimer la virgule de milliers au lieu de la convertir en point, ce qui évite les plantages silencieux de `float()`.
+   - **Espaces insécables Unicode (`\u202f`, `\xa0`)** : Très fréquents dans les exports de dates (ex: `10:35:44\u202fPM`). Toujours normaliser en espace standard avant `strptime`.
+   - **Propagation de `amount_eur` & `fees_eur`** : Tout calcul GIPS (KPI dividendes, flux de capitaux TRI / MWR) s'appuie sur `Transaction.amount_eur`. Toujours renseigner `amount_eur` lors de la création d'un enregistrement.
+6. **Résolution d'Alias Yahoo Finance** :
+   - `853292` (WKN BMW sur Revolut) -> `BMW.DE`
+   - `IUSA` (iShares S&P 500 UCITS ETF) -> `IUSA.DE`
+   - `CSX5.PA` (Euro Stoxx 50 UCITS ETF) -> `CSX5.AS` (Euronext Amsterdam / Paris)
+   - `BTC` -> `BTC-EUR`
+7. **Mettre à jour ce fichier (`PROJECT_STATUS.md`)** dès qu'une nouvelle fonctionnalité majeure est achevée.

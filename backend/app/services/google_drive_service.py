@@ -12,7 +12,7 @@ from typing import Dict, Any, List, Optional
 import httpx
 from sqlmodel import Session, select
 
-from app.models import DriveSyncLog
+from app.models import DriveSyncLog, Account, AccountType
 from app.services.bourso_trade_parser import BoursoTradeParser
 from app.services.bourso_statement_parser import BoursoStatementParser
 from app.services.revolut_csv_parser import RevolutCsvParser
@@ -20,9 +20,10 @@ from app.services.pee_import_service import PeeImportService
 
 logger = logging.getLogger("google_drive_service")
 
-# Chemin des jetons MCP / OAuth sur la machine
-OAUTH_TOKENS_PATH = r"C:\Users\Borel\.gemini\antigravity\mcp_oauth_tokens.json"
-MCP_CONFIG_PATH = r"C:\Users\Borel\.gemini\config\mcp_config.json"
+# Chemin des jetons MCP / OAuth sur la machine (avec surcharge env possible)
+OAUTH_TOKENS_PATH = os.getenv("DRIVE_OAUTH_TOKENS_PATH", r"C:\Users\Borel\.gemini\antigravity\mcp_oauth_tokens.json")
+MCP_CONFIG_PATH = os.getenv("DRIVE_MCP_CONFIG_PATH", r"C:\Users\Borel\.gemini\config\mcp_config.json")
+
 GOOGLE_DRIVE_MCP_URL = "https://drivemcp.googleapis.com/mcp/v1"
 DRIVE_API_BASE = "https://www.googleapis.com/drive/v3"
 
@@ -114,19 +115,30 @@ class GoogleDriveService:
         """
         headers = self._get_headers()
         
-        # Récupérer l'ensemble des fichiers sous Bourse
-        url = (
-            f"{DRIVE_API_BASE}/files"
-            f"?q=trashed = false"
-            f"&fields=files(id,name,mimeType,parents,size,modifiedTime,md5Checksum)"
-            f"&pageSize=200"
-        )
-        resp = httpx.get(url, headers=headers, timeout=15.0)
-        if resp.status_code != 200:
-            raise ValueError(f"Erreur requête Google Drive API : {resp.text}")
+        # Récupérer l'ensemble des fichiers sous Bourse avec pagination (R5)
+        all_files = []
+        page_token = None
+        while True:
+            params = {
+                "q": "trashed = false",
+                "fields": "nextPageToken, files(id, name, mimeType, parents, size, modifiedTime, md5Checksum)",
+                "pageSize": 200,
+            }
+            if page_token:
+                params["pageToken"] = page_token
 
-        all_files = resp.json().get("files", [])
+            resp = httpx.get(f"{DRIVE_API_BASE}/files", headers=headers, params=params, timeout=20.0)
+            if resp.status_code != 200:
+                raise ValueError(f"Erreur requête Google Drive API : {resp.text}")
+
+            data = resp.json() or {}
+            all_files.extend(data.get("files", []))
+            page_token = data.get("nextPageToken")
+            if not page_token:
+                break
+
         files_by_id = {f["id"]: f for f in all_files}
+
 
         # Repérer les dossiers clés
         subfolders = {}
@@ -237,6 +249,23 @@ class GoogleDriveService:
             "errors": [],
         }
 
+        # Résolution dynamique des comptes cibles (R4 : sans ID en dur)
+        pea_account = session.exec(
+            select(Account).where(Account.account_type == AccountType.PEA)
+        ).first()
+        pea_account_id = pea_account.id if pea_account else 1
+
+        revolut_account = session.exec(
+            select(Account)
+            .where(Account.institution == "Revolut")
+            .where(Account.account_type.in_([AccountType.CTO, AccountType.CRYPTO]))
+        ).first()
+        if not revolut_account:
+            revolut_account = session.exec(
+                select(Account).where(Account.institution == "Revolut")
+            ).first()
+        revolut_account_id = revolut_account.id if revolut_account else 3
+
         # 1. Boursorama (Avis d'opérés puis Relevé de titres)
         bourso_files = categories.get("bourso", {}).get("files", [])
         
@@ -261,7 +290,7 @@ class GoogleDriveService:
                     # Parse avis d'opéré
                     trade_data = BoursoTradeParser.parse_pdf_bytes(pdf_bytes)
                     if trade_data:
-                        tx = BoursoTradeParser.import_trade_to_db(session, trade_data, pea_account_id=1)
+                        tx = BoursoTradeParser.import_trade_to_db(session, trade_data, pea_account_id=pea_account_id)
                         if tx:
                             stats["bourso_trades_imported"] += 1
 
@@ -281,7 +310,7 @@ class GoogleDriveService:
                     # Parse relevé de titres
                     stmt_data = BoursoStatementParser.parse_pdf_bytes(pdf_bytes)
                     if stmt_data:
-                        res = BoursoStatementParser.import_statement_to_db(session, stmt_data, pea_account_id=1)
+                        res = BoursoStatementParser.import_statement_to_db(session, stmt_data, pea_account_id=pea_account_id)
                         stats["bourso_positions_updated"] += res.get("positions_updated", 0)
 
                     self._record_log(
@@ -321,10 +350,11 @@ class GoogleDriveService:
                 cat_type, items = RevolutCsvParser.detect_and_parse(csv_text, fname)
                 imported = 0
                 if cat_type in ("trading_statement", "crypto_statement") and items:
-                    imported = RevolutCsvParser.import_transactions_to_db(session, items, account_id=3)
+                    imported = RevolutCsvParser.import_transactions_to_db(session, items, account_id=revolut_account_id)
                     stats["revolut_transactions_imported"] += imported
                 else:
                     imported = len(items)
+
 
                 self._record_log(
                     session=session,
