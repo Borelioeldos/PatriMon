@@ -324,6 +324,27 @@ export const api = {
     if (!res.ok) throw new Error("Erreur synchronisation transactions");
     return res.json();
   },
+
+  // ─── Google Drive Bourse & Investissements ───
+  async getDriveTree() {
+    const res = await fetch(`${API_BASE}/google-drive/tree`);
+    if (!res.ok) throw new Error("Erreur récupération arborescence Google Drive");
+    return res.json();
+  },
+
+  async syncDriveBourse() {
+    const res = await fetch(`${API_BASE}/google-drive/sync`, {
+      method: 'POST',
+    });
+    if (!res.ok) throw new Error("Erreur synchronisation Google Drive Bourse");
+    return res.json();
+  },
+
+  async getDriveLogs(limit = 30) {
+    const res = await fetch(`${API_BASE}/google-drive/logs?limit=${limit}`);
+    if (!res.ok) throw new Error("Erreur récupération historique Google Drive");
+    return res.json();
+  },
 };
 
 

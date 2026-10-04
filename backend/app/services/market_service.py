@@ -60,6 +60,13 @@ class MarketService:
     def get_quote(self, symbol: str, force_refresh: bool = False) -> Dict[str, Any]:
         """Récupère la cotation en direct d'un symbole boursier, ETF ou crypto."""
         clean = symbol.strip().upper()
+        # Normalisation automatique des actions allemandes et ETF
+        alias_map = {
+            "SIE": "SIE.DE",
+            "VOW3": "VOW3.DE",
+            "CSX5.PA": "SX5E.PA",
+        }
+        lookup_symbol = alias_map.get(clean, clean)
         now = time.time()
 
         # Vérification du cache
@@ -69,7 +76,7 @@ class MarketService:
                 return entry["data"]
 
         try:
-            ticker = yf.Ticker(clean)
+            ticker = yf.Ticker(lookup_symbol)
             fast = ticker.fast_info
 
             current_price = fast.get("lastPrice")

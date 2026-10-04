@@ -1,5 +1,5 @@
 import React from 'react';
-import { RefreshCw, PlusCircle, Wallet, TrendingUp, Radio, ArrowLeftRight, Landmark, Building2 } from 'lucide-react';
+import { RefreshCw, PlusCircle, Wallet, TrendingUp, Radio, ArrowLeftRight, Landmark, Building2, Cloud } from 'lucide-react';
 
 export default function Navbar({ 
   onRefresh, 
@@ -9,6 +9,7 @@ export default function Navbar({
   onOpenAddTransaction,
   onOpenBankSync,
   onOpenPeeImport,
+  onOpenDriveSync,
   lastUpdated,
   autoRefresh,
   onToggleAutoRefresh,
@@ -93,6 +94,16 @@ export default function Navbar({
           >
             <Building2 className="w-3.5 h-3.5 text-amber-400" />
             <span className="hidden lg:inline">Relevé PEE</span>
+          </button>
+
+          {/* Bouton Google Drive Bourse */}
+          <button
+            onClick={onOpenDriveSync}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 hover:text-blue-300 border border-blue-500/30 text-xs sm:text-sm font-semibold transition-all active:scale-95"
+            title="Synchroniser vos comptes boursiers (PEA, CTO, Crypto, PEE) depuis votre Google Drive"
+          >
+            <Cloud className="w-3.5 h-3.5 text-blue-400" />
+            <span className="hidden md:inline">Google Drive</span>
           </button>
 
           {/* Bouton Nouveau Compte */}

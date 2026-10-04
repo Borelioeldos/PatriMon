@@ -247,3 +247,20 @@ class BankAccountMapping(SQLModel, table=True):
     last_balance: Optional[float] = None
     last_synced_at: Optional[datetime] = None
 
+
+# ═══════════════════════════ Google Drive Bourse ═══════════════════════════
+
+class DriveSyncLog(SQLModel, table=True):
+    """Journal de traçabilité des fichiers traités depuis Google Drive (Anti-doublons)."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    drive_file_id: str = Field(index=True)
+    file_name: str
+    file_category: str                    # bourso_trade, bourso_statement, revolut_trading, revolut_crypto, revolut_pnl, bnp_pee
+    md5_checksum: Optional[str] = None
+    file_mtime: Optional[str] = None
+    transactions_imported: int = 0
+    holdings_updated: int = 0
+    status: str = "SUCCESS"               # SUCCESS, PARTIAL, ERROR
+    details: Optional[str] = None         # Message résumé ou détails JSON
+    imported_at: datetime = Field(default_factory=get_utc_now)
+

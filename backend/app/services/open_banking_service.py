@@ -26,7 +26,7 @@ CONFIG_FILE_PATH = Path(__file__).resolve().parent.parent.parent / "open_banking
 POPULAR_INSTITUTIONS = [
     {
         "id": "boursobank",
-        "name": "BoursoBank",
+        "name": "Boursorama Banque",
         "title": "BoursoBank (ex-Boursorama)",
         "country": "FR",
         "logo": "https://cdn.nordigen.com/ais/BOURSOBANK_BOUSFRPP.png",
@@ -265,19 +265,46 @@ class OpenBankingService:
         session: Session,
         institution_id: str,
         redirect_uri: str,
+        psu_type: str = "personal",
     ) -> Dict[str, Any]:
         """Crée une demande d'accès et retourne le lien de consentement bancaire."""
-        # Trouver les infos de l'institution en préservant le nom exact
+        # Trouver les infos de l'institution en préservant le nom exact et le type PSU
         inst_name = institution_id
+        effective_psu_type = psu_type or "personal"
         try:
             available_institutions = await self.list_institutions()
+            matched_inst = None
+            target = institution_id.lower().strip()
+
+            # 1. Correspondance exacte par ID ou name
             for inst in available_institutions:
-                if inst["id"].lower() == institution_id.lower() or inst["name"].lower() == institution_id.lower():
-                    inst_name = inst["name"]
+                if inst["id"].lower() == target or inst["name"].lower() == target:
+                    matched_inst = inst
                     break
-        except Exception:
+
+            # 2. Correspondance souple pour banques françaises courantes
+            if not matched_inst:
+                for inst in available_institutions:
+                    i_name = inst["name"].lower()
+                    if ("bourso" in target and "bourso" in i_name) or \
+                       ("bnp" in target and "bnp" in i_name) or \
+                       ("revolut" in target and "revolut" in i_name) or \
+                       ("fortuneo" in target and "fortuneo" in i_name) or \
+                       ("societe" in target and "societe" in i_name) or \
+                       ("agricole" in target and "agricole" in i_name):
+                        matched_inst = inst
+                        break
+
+            if matched_inst:
+                inst_name = matched_inst["name"]
+                raw_aspsp = matched_inst.get("aspsp_raw") or {}
+                supported_psu_types = raw_aspsp.get("psu_types", [])
+                if supported_psu_types and effective_psu_type not in supported_psu_types:
+                    effective_psu_type = supported_psu_types[0]
+        except Exception as e:
+            logger.warning(f"Erreur recherche institution: {e}")
             for inst in POPULAR_INSTITUTIONS:
-                if inst["id"].lower() == institution_id.lower() or inst["name"].lower() == institution_id.lower():
+                if inst["id"].lower() == institution_id.lower() or inst["name"].lower() == institution_id.lower() or ("bourso" in institution_id.lower() and "bourso" in inst["name"].lower()):
                     inst_name = inst["name"]
                     break
 
@@ -360,6 +387,7 @@ class OpenBankingService:
                     "name": inst_name,
                     "country": "FR",
                 },
+                "psu_type": effective_psu_type,
                 "state": state_token,
                 "redirect_url": effective_redirect,
             }
@@ -448,9 +476,10 @@ class OpenBankingService:
         expected_type = account_type or self._determine_account_type(account_name, inst_clean)
 
         # 1. Vérifier si un compte est déjà mappé avec cet IBAN
-        if iban:
+        clean_iban = iban.strip() if isinstance(iban, str) else ""
+        if clean_iban and len(clean_iban) > 5 and not clean_iban.startswith("{"):
             existing_mapping = session.exec(
-                select(BankAccountMapping).where(BankAccountMapping.iban == iban)
+                select(BankAccountMapping).where(BankAccountMapping.iban == clean_iban)
             ).first()
             if existing_mapping:
                 acc = session.get(Account, existing_mapping.patrimon_account_id)
@@ -461,25 +490,49 @@ class OpenBankingService:
                         session.add(acc)
                     return acc
 
-        # 2. Chercher par correspondance de nom d'établissement et de type
+        # Comptes déjà assignés à des liaisons bancaires existantes
+        assigned_account_ids = {
+            m.patrimon_account_id
+            for m in session.exec(select(BankAccountMapping)).all()
+        }
+
+        # 2. Chercher par correspondance de nom d'établissement, devise et type parmi les comptes non encore assignés
         matched = None
+        target_cur = (currency or "EUR").upper()
         for a in accounts:
+            if a.id in assigned_account_ids:
+                continue
+
+            a_cur = (a.currency or "EUR").upper()
+            if a_cur != target_cur:
+                continue
+
             a_inst = (a.institution or "").lower()
             a_name = (a.name or "").lower()
             target_inst = inst_clean.lower()
-            target_name = account_name.lower()
 
-            if target_inst in a_inst or target_inst in a_name:
-                if a.account_type == expected_type:
-                    matched = a
-                    break
-                # Correspondance par mots clés
-                if expected_type == AccountType.CHECKING and any(w in a_name for w in ["courant", "checking", "principal"]):
-                    matched = a
-                    break
-                elif expected_type == AccountType.SAVINGS and any(w in a_name for w in ["livret", "épargne", "epargne", "coffre"]):
-                    matched = a
-                    break
+            # Vérification stricte de l'établissement bancaire
+            inst_matches = (
+                target_inst == a_inst or
+                (target_inst in a_inst and len(target_inst) > 3) or
+                (a_inst in target_inst and len(a_inst) > 3) or
+                ("bourso" in target_inst and ("bourso" in a_inst or "bourso" in a_name)) or
+                ("bnp" in target_inst and ("bnp" in a_inst or "bnp" in a_name)) or
+                ("revolut" in target_inst and ("revolut" in a_inst or "revolut" in a_name))
+            )
+            if not inst_matches:
+                continue
+
+            if a.account_type == expected_type:
+                matched = a
+                break
+            # Correspondance par mots clés
+            if expected_type == AccountType.CHECKING and any(w in a_name for w in ["courant", "checking", "principal"]):
+                matched = a
+                break
+            elif expected_type == AccountType.SAVINGS and any(w in a_name for w in ["livret", "épargne", "epargne", "coffre"]):
+                matched = a
+                break
 
         if matched:
             if initial_balance is not None:
@@ -503,7 +556,7 @@ class OpenBankingService:
             cash_balance=round(initial_balance or 0.0, 2),
             currency=currency or "EUR",
             color=color,
-            notes=f"Compte créé automatiquement via Open Banking DSP2{f' • IBAN: {iban}' if iban else ''}",
+            notes=f"Compte créé automatiquement via Open Banking DSP2{f' • IBAN: {clean_iban}' if clean_iban else ''}",
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc),
         )
@@ -602,9 +655,22 @@ class OpenBankingService:
                     acc_id_val = ext_acc.get("account_id")
                     iban = ""
                     if isinstance(acc_id_val, dict):
-                        iban = acc_id_val.get("iban") or acc_id_val.get("bban") or acc_id_val.get("other") or ""
-                    elif isinstance(acc_id_val, str):
-                        iban = acc_id_val
+                        cand = acc_id_val.get("iban") or acc_id_val.get("bban")
+                        if isinstance(cand, str) and cand.strip():
+                            iban = cand.strip()
+                        else:
+                            other_val = acc_id_val.get("other")
+                            if isinstance(other_val, dict):
+                                ident = other_val.get("identification")
+                                if isinstance(ident, str) and ident.strip():
+                                    iban = ident.strip()
+                            elif isinstance(other_val, str) and other_val.strip():
+                                iban = other_val.strip()
+                    elif isinstance(acc_id_val, str) and acc_id_val.strip():
+                        iban = acc_id_val.strip()
+
+                    if not isinstance(iban, str):
+                        iban = ""
 
                     if not acc_uid:
                         acc_uid = iban or f"acc_{conn.id}_{idx + 1}"
@@ -651,8 +717,8 @@ class OpenBankingService:
                             except (ValueError, TypeError):
                                 pass
 
-                # Si aucun solde n'a été fourni dans la session, interroger /accounts/{acc_uid}/balances
-                if initial_balance == 0.0 and acc_uid:
+                # Interroger directement /accounts/{acc_uid}/balances si disponible pour s'assurer du solde et de la devise
+                if acc_uid:
                     try:
                         b_resp = await client.get(
                             f"{ENABLE_BANKING_API_BASE}/accounts/{acc_uid}/balances",
@@ -669,20 +735,29 @@ class OpenBankingService:
                                         amt_info = db.get("balance_amount")
                                         if isinstance(amt_info, dict) and "amount" in amt_info:
                                             initial_balance = float(amt_info["amount"])
+                                            if amt_info.get("currency"):
+                                                currency = amt_info["currency"]
                                             break
                                         elif "amount" in db:
                                             initial_balance = float(db["amount"])
+                                            if db.get("currency"):
+                                                currency = db["currency"]
                                             break
                     except Exception as e:
                         logger.warning(f"Impossible de récupérer le solde direct pour {acc_uid}: {e}")
 
+                # Ajuster le nom si trop générique
+                if "Compte " in acc_name and currency:
+                    acc_name = f"{conn.institution_name} - Compte {currency}"
+
                 # Trouver ou créer automatiquement le compte
+                clean_iban = iban.strip() if isinstance(iban, str) else ""
                 target_acc = self._get_or_create_account(
                     session=session,
                     institution_name=conn.institution_name,
                     account_name=acc_name,
                     initial_balance=initial_balance,
-                    iban=iban,
+                    iban=clean_iban,
                     currency=currency,
                 )
 
@@ -701,7 +776,7 @@ class OpenBankingService:
                         connection_id=conn.id,
                         external_account_id=str(acc_uid),
                         patrimon_account_id=target_acc.id,
-                        iban=iban,
+                        iban=clean_iban if (clean_iban and len(clean_iban) > 5 and not clean_iban.startswith("{")) else None,
                         name=acc_name,
                         last_balance=initial_balance or target_acc.cash_balance,
                         last_synced_at=datetime.now(timezone.utc),
@@ -717,31 +792,171 @@ class OpenBankingService:
                 session.add(target_acc)
                 mapped_count += 1
 
-            # Si la banque n'a listé aucun compte dans la session, créer un compte par défaut
+            # Si la banque n'a listé aucun compte dans la session
             if mapped_count == 0:
-                default_acc = self._get_or_create_account(
+                conn.status = "PENDING"
+                session.add(conn)
+                session.commit()
+                return {
+                    "success": False,
+                    "message": f"La banque {conn.institution_name} n'a retourné aucun compte autorisé. Veuillez vérifier vos accès et renouveler le consentement en mode Particulier.",
+                    "accounts_mapped": 0,
+                    "accounts": [],
+                }
+
+            session.commit()
+
+            # Synchronisation conjointe immédiate de l'historique des transactions
+            tx_count = 0
+            try:
+                tx_stats = await self.sync_all_transactions(session)
+                tx_count = tx_stats.get("new_transactions_imported", 0)
+            except Exception as e:
+                logger.warning(f"Erreur synchronisation initiale des transactions pour {conn.institution_name}: {e}")
+
+            return {
+                "success": True,
+                "message": f"Banque {conn.institution_name} connectée ! {mapped_count} compte(s) lié(s) et {tx_count} transaction(s) importée(s).",
+                "accounts_mapped": mapped_count,
+                "accounts": created_accounts_names,
+                "transactions_imported": tx_count,
+            }
+
+    async def repair_connection_mappings(self, session: Session, conn_id: int) -> Dict[str, Any]:
+        """
+        Restaure ou complète la synchronisation et le mapping des comptes pour une connexion bancaire
+        déjà autorisée (statut LINKED avec agreement_id).
+        """
+        conn = session.get(BankConnection, conn_id)
+        if not conn:
+            return {"success": False, "message": "Connexion introuvable"}
+
+        if conn.is_simulation:
+            self._auto_map_simulated_accounts(session, conn)
+            return {"success": True, "message": "Connexion simulée réinitialisée"}
+
+        if not self.application_id or not self.private_key:
+            return {"success": False, "message": "Identifiants Enable Banking manquants"}
+
+        token = self._generate_jwt()
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }
+
+        raw_uids = []
+        if conn.account_ids:
+            try:
+                raw_uids = json.loads(conn.account_ids)
+            except Exception:
+                raw_uids = []
+
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            if not raw_uids and conn.agreement_id:
+                try:
+                    s_resp = await client.get(
+                        f"{ENABLE_BANKING_API_BASE}/sessions/{conn.agreement_id}",
+                        headers=headers,
+                    )
+                    if s_resp.status_code == 200:
+                        s_data = s_resp.json() or {}
+                        raw_uids = s_data.get("accounts") or []
+                        if raw_uids:
+                            conn.account_ids = json.dumps([str(u) for u in raw_uids])
+                            session.add(conn)
+                            session.commit()
+                except Exception as e:
+                    logger.warning(f"Erreur interrogation session Enable Banking: {e}")
+
+            if not raw_uids:
+                return {"success": False, "message": "Aucun compte trouvé"}
+
+            mapped_count = 0
+            created_accounts_names = []
+
+            for idx, acc_uid in enumerate(raw_uids):
+                acc_uid_str = str(acc_uid)
+                currency = "EUR"
+                initial_balance = 0.0
+
+                try:
+                    b_resp = await client.get(
+                        f"{ENABLE_BANKING_API_BASE}/accounts/{acc_uid_str}/balances",
+                        headers=headers,
+                    )
+                    if b_resp.status_code == 200:
+                        b_json = b_resp.json() or {}
+                        b_list = b_json.get("balances") or b_json.get("balance") or []
+                        if isinstance(b_list, dict):
+                            b_list = [b_list]
+                        if isinstance(b_list, list) and b_list:
+                            first_b = b_list[0]
+                            if isinstance(first_b, dict):
+                                amt_info = first_b.get("balance_amount")
+                                if isinstance(amt_info, dict) and "amount" in amt_info:
+                                    initial_balance = float(amt_info["amount"])
+                                    if amt_info.get("currency"):
+                                        currency = amt_info["currency"]
+                                elif "amount" in first_b:
+                                    initial_balance = float(first_b["amount"])
+                                    if first_b.get("currency"):
+                                        currency = first_b["currency"]
+                except Exception as e:
+                    logger.warning(f"Erreur récupération solde pour {acc_uid_str}: {e}")
+
+                acc_name = f"{conn.institution_name} - Compte {currency}"
+                # Différencier si plusieurs comptes de même devise
+                same_name_existing = session.exec(
+                    select(BankAccountMapping).where(
+                        BankAccountMapping.connection_id == conn.id,
+                        BankAccountMapping.name == acc_name,
+                        BankAccountMapping.external_account_id != acc_uid_str
+                    )
+                ).first()
+                if same_name_existing:
+                    acc_name = f"{conn.institution_name} - Compte {currency} ({idx + 1})"
+
+                target_acc = self._get_or_create_account(
                     session=session,
                     institution_name=conn.institution_name,
-                    account_name=f"Compte Courant {conn.institution_name}",
-                    initial_balance=0.0,
-                    currency="EUR",
+                    account_name=acc_name,
+                    initial_balance=initial_balance,
+                    iban="",
+                    currency=currency,
                 )
-                mapping = BankAccountMapping(
-                    connection_id=conn.id,
-                    external_account_id=f"{conn.institution_id}_main",
-                    patrimon_account_id=default_acc.id,
-                    name=default_acc.name,
-                    last_balance=0.0,
-                    last_synced_at=datetime.now(timezone.utc),
-                )
-                session.add(mapping)
-                created_accounts_names.append(default_acc.name)
+
+                created_accounts_names.append(target_acc.name)
+
+                mapping = session.exec(
+                    select(BankAccountMapping).where(
+                        BankAccountMapping.connection_id == conn.id,
+                        BankAccountMapping.external_account_id == acc_uid_str
+                    )
+                ).first()
+
+                if not mapping:
+                    mapping = BankAccountMapping(
+                        connection_id=conn.id,
+                        external_account_id=acc_uid_str,
+                        patrimon_account_id=target_acc.id,
+                        name=acc_name,
+                        last_balance=initial_balance or target_acc.cash_balance,
+                        last_synced_at=datetime.now(timezone.utc),
+                    )
+                    session.add(mapping)
+                else:
+                    mapping.last_balance = initial_balance
+                    mapping.last_synced_at = datetime.now(timezone.utc)
+                    session.add(mapping)
+
+                target_acc.cash_balance = initial_balance
+                target_acc.updated_at = datetime.now(timezone.utc)
+                session.add(target_acc)
                 mapped_count += 1
 
             session.commit()
             return {
                 "success": True,
-                "message": f"Banque {conn.institution_name} connectée ! {mapped_count} compte(s) créé(s) et synchronisé(s).",
                 "accounts_mapped": mapped_count,
                 "accounts": created_accounts_names,
             }
@@ -1170,6 +1385,17 @@ class OpenBankingService:
     async def sync_all_balances(self, session: Session) -> Dict[str, Any]:
         """Synchronise les soldes espèces et l'historique des transactions de tous les comptes bancaires liés."""
         connections = session.exec(select(BankConnection)).all()
+        # Auto-réparation si des connexions LINKED n'ont pas encore leurs mappings
+        for c in connections:
+            if not c.is_simulation and c.status == "LINKED" and c.agreement_id:
+                m_count = len(session.exec(select(BankAccountMapping).where(BankAccountMapping.connection_id == c.id)).all())
+                if m_count == 0:
+                    try:
+                        logger.info(f"Auto-réparation des comptes pour la connexion {c.institution_name} ({c.id})...")
+                        await self.repair_connection_mappings(session, c.id)
+                    except Exception as e:
+                        logger.warning(f"Impossible d'auto-réparer la connexion {c.id}: {e}")
+
         mappings = session.exec(select(BankAccountMapping)).all()
 
         synced_count = 0

@@ -10,6 +10,7 @@ import AddAccountModal from './components/AddAccountModal';
 import AddTransactionModal from './components/AddTransactionModal';
 import PeeImportModal from './components/PeeImportModal';
 import BankSyncModal from './components/BankSyncModal';
+import DriveSyncModal from './components/DriveSyncModal';
 import { api } from './services/api';
 import { Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
 
@@ -32,6 +33,7 @@ export default function App() {
   const [isAddTransactionOpen, setIsAddTransactionOpen] = useState(false);
   const [isPeeImportOpen, setIsPeeImportOpen] = useState(false);
   const [isBankSyncOpen, setIsBankSyncOpen] = useState(false);
+  const [isDriveSyncOpen, setIsDriveSyncOpen] = useState(false);
   const [activeAccountForAsset, setActiveAccountForAsset] = useState(null);
   const [activeAccountForTransaction, setActiveAccountForTransaction] = useState(null);
 
@@ -184,6 +186,7 @@ export default function App() {
         onOpenAddTransaction={() => handleOpenAddTransaction(null)}
         onOpenBankSync={() => setIsBankSyncOpen(true)}
         onOpenPeeImport={() => setIsPeeImportOpen(true)}
+        onOpenDriveSync={() => setIsDriveSyncOpen(true)}
         lastUpdated={lastUpdated}
         autoRefresh={autoRefresh}
         onToggleAutoRefresh={handleToggleAutoRefresh}
@@ -307,6 +310,15 @@ export default function App() {
       <BankSyncModal
         isOpen={isBankSyncOpen}
         onClose={() => setIsBankSyncOpen(false)}
+        onSyncSuccess={() => {
+          fetchPortfolio(true);
+          setTxRefreshTrigger(prev => prev + 1);
+        }}
+      />
+
+      <DriveSyncModal
+        isOpen={isDriveSyncOpen}
+        onClose={() => setIsDriveSyncOpen(false)}
         onSyncSuccess={() => {
           fetchPortfolio(true);
           setTxRefreshTrigger(prev => prev + 1);

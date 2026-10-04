@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import CORS_ORIGINS
 from app.database import init_db
-from app.routers import accounts, holdings, portfolio, market, transactions, open_banking, pee
+from app.routers import accounts, holdings, portfolio, market, transactions, open_banking, pee, google_drive
 
 
 @asynccontextmanager
@@ -39,6 +39,7 @@ app.include_router(market.router, prefix="/api")
 app.include_router(transactions.router, prefix="/api")
 app.include_router(open_banking.router, prefix="/api")
 app.include_router(pee.router, prefix="/api")
+app.include_router(google_drive.router)
 
 
 @app.get("/")

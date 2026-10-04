@@ -9,3 +9,6 @@ python-multipart>=0.0.9
 pypdf>=4.1.0
 pyjwt>=2.8.0
 cryptography>=42.0.0
+google-api-python-client>=2.100.0
+google-auth>=2.23.0
+google-auth-httplib2>=0.1.1

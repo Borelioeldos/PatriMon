@@ -22,7 +22,8 @@ class ConfigRequest(BaseModel):
 
 class ConnectRequest(BaseModel):
     institution_id: str
-    redirect_uri: str = "http://localhost:5173"
+    redirect_uri: str = "https://localhost:5173"
+    psu_type: Optional[str] = "personal"
 
 
 class SessionRequest(BaseModel):
@@ -121,6 +122,7 @@ async def connect_bank(
             session=session,
             institution_id=req.institution_id,
             redirect_uri=req.redirect_uri,
+            psu_type=req.psu_type or "personal",
         )
         return res
     except Exception as e:

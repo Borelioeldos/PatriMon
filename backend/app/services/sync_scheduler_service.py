@@ -142,7 +142,7 @@ class SyncSchedulerService:
 
                 # 2. Création ou mise à jour du snapshot de patrimoine du jour
                 try:
-                    portfolio_service.get_summary(session, force_refresh=True)
+                    portfolio_service.get_portfolio_summary(session, force_refresh=True)
                 except Exception as e:
                     logger.debug(f"Note snapshot patrimoine : {e}")
 

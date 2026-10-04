@@ -42,37 +42,54 @@ ALL_CATEGORIES = [
 ]
 
 # Règles de classification basées sur mots-clés
+# Règles de classification basées sur mots-clés
 KEYWORD_RULES = [
-    # Revenus & Salaires
-    (CATEGORY_SALARY, [
-        r"\bsalaire\b", r"\bpaie\b", r"\bpaye\b", r"remuneration", r"schneider electric",
-        r"virement employeur", r"\bcaf\b", r"\bcpam\b", r"pole emploi", r"france travail",
-        r"\bprime\b", r"indemnite", r"remboursement cpam"
+    # Abonnements & Médias (doit être prioritaire sur les salaires pour Amazon Prime)
+    (CATEGORY_SUBSCRIPTIONS, [
+        r"amazon prime", r"prime video", r"netflix", r"spotify", r"apple\.com", r"itunes",
+        r"deezer", r"disney", r"youtube", r"canal\+", r"free telecom", r"free mobile",
+        r"\borange\b", r"\bsfr\b", r"bouygues tel", r"chatgpt", r"openai", r"google one",
+        r"icloud", r"playstation", r"xbox"
+    ]),
+    # Alimentation & Courses
+    (CATEGORY_FOOD, [
+        r"uber\s*\*?\s*eats", r"deliveroo", r"just eat", r"carrefour", r"leclerc", r"auchan",
+        r"monoprix", r"lidl", r"intermarche", r"picard", r"franprix", r"boulangerie",
+        r"supermarche", r"hypermarche", r"casino", r"biocoop", r"naturalia", r"boucherie",
+        r"grand frais", r"primeur", r"fruits?", r"legumes?", r"vival", r"bergerie",
+        r"too good to go", r"boulanger", r"paul\b"
+    ]),
+    # Transports & Véhicule
+    (CATEGORY_TRANSPORT, [
+        r"citiz", r"leo&go", r"sncf", r"ratp", r"ter\b", r"tgv\b", r"uber\s*\*?\s*trip",
+        r"uber(?!\s*\*?\s*eats)", r"\bbolt\b", r"\btaxi\b", r"parking", r"indigo",
+        r"\blpa\b", r"q-park", r"station avia", r"\bavia\b", r"total access", r"station essence",
+        r"shell", r"esso", r"bp france", r"electra", r"airserv", r"air\s*serv",
+        r"peage", r"vinci autoroutes", r"aprr", r"sanef", r"blablacar", r"air france",
+        r"easyjet", r"ryanair", r"lime", r"dott", r"tier", r"velib", r"velov"
+    ]),
+    # Investissement & Épargne
+    (CATEGORY_INVEST, [
+        r"defi d'epargne", r"défi d'épargne", r"\bcoffre\b", r"\bvault\b", r"\bpea\b",
+        r"\bcw8\b", r"\bmsci\b", r"amundi", r"ishares", r"vanguard", r"achat titre",
+        r"courtage", r"boursobank.*titre", r"\bbourse\b", r"binance", r"kraken",
+        r"coinbase", r"\bcrypto\b", r"trade republic", r"degiro", r"revolut trading",
+        r"bnp epargne", r"cardif", r"\bfcpe\b"
+    ]),
+    # Virement & Recharges
+    (CATEGORY_TRANSFER, [
+        r"top-up", r"recharge", r"virement", r"vir sepa", r"transfert", r"versement"
     ]),
     # Dividendes & Intérêts
     (CATEGORY_DIVIDENDS, [
         r"\bdividende\b", r"\bcoupon\b", r"interet.*livret", r"remuneration compte"
     ]),
-    # Investissement & Épargne
-    (CATEGORY_INVEST, [
-        r"\bpea\b", r"\bcw8\b", r"\bmsci\b", r"amundi", r"ishares", r"vanguard",
-        r"achat titre", r"courtage", r"boursobank.*titre", r"\bbourse\b",
-        r"binance", r"kraken", r"coinbase", r"\bcrypto\b", r"trade republic",
-        r"degiro", r"revolut trading", r"bnp epargne", r"cardif", r"\bfcpe\b"
-    ]),
-    # Abonnements & Médias
-    (CATEGORY_SUBSCRIPTIONS, [
-        r"netflix", r"spotify", r"apple\.com", r"itunes", r"amazon prime",
-        r"prime video", r"deezer", r"disney", r"youtube", r"canal\+",
-        r"free telecom", r"free mobile", r"\borange\b", r"\bsfr\b", r"bouygues tel",
-        r"chatgpt", r"openai", r"google one", r"icloud", r"playstation", r"xbox"
-    ]),
-    # Alimentation & Courses
-    (CATEGORY_FOOD, [
-        r"carrefour", r"leclerc", r"auchan", r"monoprix", r"lidl",
-        r"intermarche", r"picard", r"franprix", r"boulangerie", r"supermarche",
-        r"hypermarche", r"casino", r"biocoop", r"naturalia", r"deliveroo",
-        r"uber eats", r"just eat", r"boucherie", r"grand frais"
+    # Loisirs & Shopping
+    (CATEGORY_LEISURE, [
+        r"action\s*\d*", r"bon coin", r"leboncoin", r"amazon payments", r"amazon(?!\s*prime)",
+        r"fnac", r"darty", r"zara", r"h&m", r"decathlon", r"cinema", r"pathe", r"ugc",
+        r"restaurant", r"brasserie", r"bistrot", r"\bbar\b", r"\bpub\b", r"\bcafe\b",
+        r"starbucks", r"mcdonald", r"burger king", r"ikea", r"leroy merlin"
     ]),
     # Logement & Énergie
     (CATEGORY_HOUSING, [
@@ -80,35 +97,23 @@ KEYWORD_RULES = [
         r"suez", r"eau de paris", r"\bloyer\b", r"syndic", r"assurance habitation",
         r"direct energie", r"enedis", r"grdf"
     ]),
-    # Transports
-    (CATEGORY_TRANSPORT, [
-        r"sncf", r"ratp", r"uber trip", r"uber\* trip", r"\bbolt\b", r"\btaxi\b",
-        r"total access", r"shell", r"esso", r"bp france", r"station essence",
-        r"peage", r"vinci autoroutes", r"aprr", r"sanef", r"parking",
-        r"indigo", r"q-park", r"blablacar", r"air france", r"easyjet"
-    ]),
-    # Santé
+    # Santé & Bien-être
     (CATEGORY_HEALTH, [
         r"pharmacie", r"doctolib", r"medecin", r"dentiste", r"\bameli\b",
         r"mutuelle", r"\balan\b", r"harmonie mutuelle", r"optique", r"laboratoire",
         r"kinesitherapeute", r"hopital", r"clinique"
     ]),
-    # Loisirs & Shopping
-    (CATEGORY_LEISURE, [
-        r"fnac", r"darty", r"amazon", r"zara", r"h&m", r"decathlon",
-        r"cinema", r"pathe", r"ugc", r"restaurant", r"brasserie",
-        r"bistrot", r"\bbar\b", r"\bpub\b", r"\bcafe\b", r"starbucks", r"mcdonald",
-        r"burger king", r"ikea", r"leroy merlin", r"boulanger"
-    ]),
-    # Frais & Taxes
+    # Frais bancaires & Taxes
     (CATEGORY_FEES, [
         r"cotisation carte", r"frais de tenue", r"agios", r"commission intervention",
         r"frais bancaire", r"dgfip", r"tresor public", r"impot", r"taxe fonciere",
         r"taxe habitation"
     ]),
-    # Virement
-    (CATEGORY_TRANSFER, [
-        r"virement", r"vir sepa", r"transfert", r"recharge"
+    # Revenus & Salaires
+    (CATEGORY_SALARY, [
+        r"\bsalaire\b", r"\bpaie\b", r"\bpaye\b", r"remuneration", r"schneider electric",
+        r"virement employeur", r"\bcaf\b", r"\bcpam\b", r"pole emploi", r"france travail",
+        r"prime d'activite", r"prime de fin d'annee", r"indemnite", r"remboursement cpam"
     ]),
 ]
 
@@ -128,6 +133,39 @@ class TransactionEnricher:
 
         text = raw_label.strip()
 
+        # Remplacement direct pour marchands très fréquents
+        lower_t = text.lower()
+        if "uber *eats" in lower_t or "uber eats" in lower_t:
+            return "Uber Eats"
+        if "citiz" in lower_t:
+            return "Citiz LPA"
+        if "top-up" in lower_t:
+            return "Recharge Revolut"
+        if "amazon prime" in lower_t:
+            return "Amazon Prime"
+        if "amazon payments" in lower_t:
+            return "Amazon"
+        if "electra" in lower_t:
+            return "Electra Bornes"
+        if "bon coin" in lower_t or "leboncoin" in lower_t:
+            return "Leboncoin"
+        if "station avia" in lower_t or ("avia" in lower_t and "station" in lower_t):
+            return "Station Avia"
+        if "grand frais" in lower_t:
+            return "Grand Frais"
+        if "carrefour" in lower_t:
+            return "Carrefour"
+        if "auchan" in lower_t:
+            return "Auchan"
+        if "action 4" in lower_t or "action " in lower_t:
+            return "Action"
+        if "indigo" in lower_t:
+            return "Parking Indigo"
+        if "lpa " in lower_t or lower_t.startswith("lpa"):
+            return "Parking LPA"
+        if "defi d'epargne" in lower_t or "défi d'épargne" in lower_t:
+            return "Défi d'épargne Revolut"
+
         # Supprimer les préfixes bancaires courants
         prefixes = [
             r"^PAIEMENT\s+(PAR\s+)?CARTE(\s+(DU\s+)?\d{2}/\d{2}(/\d{2,4})?)?\s*",
@@ -142,6 +180,7 @@ class TransactionEnricher:
             r"^RETRAIT\s+DAB\s*",
             r"^FACTURE\s*",
             r"^COTIS\s*",
+            r"^NYX\*",
         ]
         for p in prefixes:
             text = re.sub(p, "", text, flags=re.IGNORECASE).strip()
@@ -196,8 +235,22 @@ class TransactionEnricher:
         if "vente" in label_lower and ("titre" in label_lower or "action" in label_lower or "etf" in label_lower):
             return TransactionType.SELL, CATEGORY_INVEST
 
+        # Un débit ne peut jamais être un salaire
+        if amount < 0 and category == CATEGORY_SALARY:
+            category = CATEGORY_OTHER
+
+        # Épargne & Virement interne Revolut
+        if "defi d'epargne" in label_lower or "défi d'épargne" in label_lower:
+            if amount > 0:
+                return TransactionType.DEPOSIT, CATEGORY_INVEST
+            else:
+                return TransactionType.WITHDRAWAL, CATEGORY_INVEST
+
+        if "top-up" in label_lower or "recharge" in label_lower:
+            return TransactionType.DEPOSIT, CATEGORY_TRANSFER
+
         if amount > 0:
-            return TransactionType.DEPOSIT, category
+            return TransactionType.DEPOSIT, category if category != CATEGORY_OTHER else CATEGORY_SALARY
         else:
             return TransactionType.WITHDRAWAL, category
 

@@ -16,7 +16,7 @@ def init_db():
     """
     from app.models import (  # noqa: F401
         Account, Holding, PortfolioSnapshot, Transaction,
-        BankConnection, BankAccountMapping
+        BankConnection, BankAccountMapping, DriveSyncLog
     )
     SQLModel.metadata.create_all(engine)
 

@@ -5,7 +5,7 @@ Supporte les relevés officiels PDF (PEE & PERO de Schneider Electric et autres 
 import io
 import re
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Dict, Any, List, Optional, Tuple
 from pypdf import PdfReader
 from sqlmodel import Session, select
@@ -324,7 +324,7 @@ class PeeImportService:
                 existing.unit_cost = it["unit_cost"]
                 existing.unit_cost_eur = it["unit_cost"]
                 existing.is_manual = True
-                existing.last_price_updated_at = datetime.utcnow()
+                existing.last_price_updated_at = datetime.now(timezone.utc)
                 session.add(existing)
                 updated_count += 1
             else:
