@@ -3,28 +3,97 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    color-scheme: dark;
+  }
+
   body {
-    background-color: #0B0F19;
-    color: #F3F4F6;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background-color: #06090F;
+    color: #F1F5F9;
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11", "tnum";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-image: 
+      radial-gradient(circle at 50% -10%, rgba(37, 99, 235, 0.12) 0%, transparent 50%),
+      radial-gradient(circle at 90% 20%, rgba(16, 185, 129, 0.05) 0%, transparent 40%),
+      radial-gradient(circle at 10% 80%, rgba(139, 92, 246, 0.04) 0%, transparent 40%);
+    background-attachment: fixed;
+  }
+
+  /* Chiffres tabulaires systématiques pour les valeurs numériques et monétaires */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
   }
 }
 
-/* Scrollbars personnalisées discrètes */
+/* Scrollbars personnalisées ultra-fines et ciselées */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 4px;
+  height: 4px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #0F172A;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #334155;
+  background: #1C273C;
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+  background: #2B3D5E;
+}
+
+/* Animations de présence & courbure Apple / Linear */
+@keyframes fadeIn {
+  from { 
+    opacity: 0; 
+    transform: translateY(6px); 
+  }
+  to { 
+    opacity: 1; 
+    transform: translateY(0); 
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Architecture Double-Bezel (Doppelrand) pour conteneurs matériel de prestige */
+.double-bezel {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.6);
+}
+
+.double-bezel-inner {
+  background: #0B101D;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 1px 1px 0 rgba(255, 255, 255, 0.09);
+}
+
+/* Boutons tactiles avec retour physique */
+.btn-haptic {
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.btn-haptic:active {
+  transform: scale(0.97);
+}
+
+/* ── Mode Confidentialité (Privacy Mode) ── */
+.privacy-active .privacy-blur,
+.privacy-active .tabular-nums,
+.privacy-active [data-privacy="true"] {
+  filter: blur(7px);
+  user-select: none;
+  transition: filter 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.privacy-active .privacy-blur:hover,
+.privacy-active .tabular-nums:hover,
+.privacy-active [data-privacy="true"]:hover {
+  filter: blur(0);
 }

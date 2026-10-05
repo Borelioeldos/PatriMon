@@ -47,6 +47,7 @@ export default function AddTransactionModal({
   const [amount, setAmount] = useState('');
   const [fees, setFees] = useState('0');
   const [category, setCategory] = useState('Investissement & Épargne');
+  const [categoriesList, setCategoriesList] = useState(DEFAULT_CATEGORIES);
   const getTodayLocalDate = () => {
     const now = new Date();
     const year = now.getFullYear();
@@ -77,6 +78,15 @@ export default function AddTransactionModal({
       })
       .catch(() => {});
   }, []);
+
+  // Fermeture par touche Échap
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && isOpen) onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   // Initialisation du compte
   useEffect(() => {
@@ -321,36 +331,43 @@ export default function AddTransactionModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-[#111827] border border-slate-800 w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn"
+      onClick={onClose}
+    >
+      <div 
+        className="bg-[#121824] border border-[#222E42] w-full max-w-xl rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-slate-800">
+        <div className="flex items-center justify-between p-4 border-b border-[#1C2536]">
           <div>
-            <h3 className="text-lg font-bold text-white flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-blue-400" />
-              Enregistrer une Opération
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-blue-400" />
+              <span>Enregistrer une opération</span>
             </h3>
             <p className="text-xs text-slate-400 mt-0.5">
-              Remplissage automatique intelligent des cotations, catégories et montants
+              Enrichissement automatique des cotations, catégories et PRU
             </p>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.06] transition-colors"
+            title="Fermer (Échap)"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Sélecteur de type d'opération */}
-        <div className="grid grid-cols-5 p-2 bg-slate-900/90 border-b border-slate-800 gap-1 text-[11px] font-semibold">
+        <div className="grid grid-cols-5 p-1 bg-[#0B0F17] border-b border-[#1C2536] gap-1 text-[11px] font-medium">
           <button
             type="button"
             onClick={() => setType('buy')}
-            className={`flex flex-col sm:flex-row items-center justify-center gap-1.5 py-2 px-1 rounded-xl transition-all ${
+            className={`flex flex-col sm:flex-row items-center justify-center gap-1.5 py-1.5 px-1 rounded-md transition-all ${
               type === 'buy'
-                ? 'bg-blue-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                ? 'bg-[#1C263A] text-blue-400 border border-[#2D3D58] font-semibold'
+                : 'text-slate-400 hover:text-white'
             }`}
           >
             <ShoppingCart className="w-3.5 h-3.5" />
@@ -360,10 +377,10 @@ export default function AddTransactionModal({
           <button
             type="button"
             onClick={() => setType('sell')}
-            className={`flex flex-col sm:flex-row items-center justify-center gap-1.5 py-2 px-1 rounded-xl transition-all ${
+            className={`flex flex-col sm:flex-row items-center justify-center gap-1.5 py-1.5 px-1 rounded-md transition-all ${
               type === 'sell'
-                ? 'bg-purple-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                ? 'bg-[#1C263A] text-purple-400 border border-[#2D3D58] font-semibold'
+                : 'text-slate-400 hover:text-white'
             }`}
           >
             <TrendingDown className="w-3.5 h-3.5" />
@@ -373,10 +390,10 @@ export default function AddTransactionModal({
           <button
             type="button"
             onClick={() => setType('deposit')}
-            className={`flex flex-col sm:flex-row items-center justify-center gap-1.5 py-2 px-1 rounded-xl transition-all ${
+            className={`flex flex-col sm:flex-row items-center justify-center gap-1.5 py-1.5 px-1 rounded-md transition-all ${
               type === 'deposit'
-                ? 'bg-emerald-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                ? 'bg-[#1C263A] text-emerald-400 border border-[#2D3D58] font-semibold'
+                : 'text-slate-400 hover:text-white'
             }`}
           >
             <ArrowDownLeft className="w-3.5 h-3.5" />
@@ -386,10 +403,10 @@ export default function AddTransactionModal({
           <button
             type="button"
             onClick={() => setType('withdrawal')}
-            className={`flex flex-col sm:flex-row items-center justify-center gap-1.5 py-2 px-1 rounded-xl transition-all ${
+            className={`flex flex-col sm:flex-row items-center justify-center gap-1.5 py-1.5 px-1 rounded-md transition-all ${
               type === 'withdrawal'
-                ? 'bg-rose-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                ? 'bg-[#1C263A] text-rose-400 border border-[#2D3D58] font-semibold'
+                : 'text-slate-400 hover:text-white'
             }`}
           >
             <ArrowUpRight className="w-3.5 h-3.5" />
@@ -399,10 +416,10 @@ export default function AddTransactionModal({
           <button
             type="button"
             onClick={() => setType('dividend')}
-            className={`flex flex-col sm:flex-row items-center justify-center gap-1.5 py-2 px-1 rounded-xl transition-all ${
+            className={`flex flex-col sm:flex-row items-center justify-center gap-1.5 py-1.5 px-1 rounded-md transition-all ${
               type === 'dividend'
-                ? 'bg-amber-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                ? 'bg-[#1C263A] text-amber-400 border border-[#2D3D58] font-semibold'
+                : 'text-slate-400 hover:text-white'
             }`}
           >
             <DollarSign className="w-3.5 h-3.5" />

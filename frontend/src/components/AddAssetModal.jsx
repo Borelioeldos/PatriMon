@@ -174,80 +174,80 @@ export default function AddAssetModal({ isOpen, onClose, accounts = [], initialA
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-[#111827] border border-slate-800 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="bg-[#121824] border border-[#222E42] w-full max-w-lg rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-slate-800">
+        <div className="flex items-center justify-between p-4 border-b border-[#1C2536]">
           <div>
-            <h3 className="text-lg font-bold text-white">Ajouter à mon Patrimoine</h3>
+            <h3 className="text-sm font-semibold text-white">Ajouter à mon patrimoine</h3>
             <p className="text-xs text-slate-400 mt-0.5">Livret d'épargne, investissement boursier ou PEE</p>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+            className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-[#172030] transition-colors"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Choix du mode par onglets */}
-        <div className="grid grid-cols-3 p-2 bg-slate-900/80 border-b border-slate-800 gap-1.5">
+        <div className="grid grid-cols-3 p-1.5 bg-[#0B0F17] border-b border-[#1C2536] gap-1">
           <button
             type="button"
             onClick={() => setActiveTab('savings')}
-            className={`flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+            className={`flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium transition-all ${
               activeTab === 'savings'
-                ? 'bg-emerald-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                ? 'bg-[#1C263A] text-emerald-400 border border-[#2D3D58] font-semibold'
+                : 'text-slate-400 hover:text-white'
             }`}
           >
-            <PiggyBank className="w-4 h-4" />
+            <PiggyBank className="w-3.5 h-3.5" />
             <span>Livrets & Épargne</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('market')}
-            className={`flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+            className={`flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium transition-all ${
               activeTab === 'market'
-                ? 'bg-blue-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                ? 'bg-[#1C263A] text-blue-400 border border-[#2D3D58] font-semibold'
+                : 'text-slate-400 hover:text-white'
             }`}
           >
-            <TrendingUp className="w-4 h-4" />
+            <TrendingUp className="w-3.5 h-3.5" />
             <span>Bourse & Crypto</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('pee')}
-            className={`flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+            className={`flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium transition-all ${
               activeTab === 'pee'
-                ? 'bg-amber-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                ? 'bg-[#1C263A] text-amber-400 border border-[#2D3D58] font-semibold'
+                : 'text-slate-400 hover:text-white'
             }`}
           >
-            <Building2 className="w-4 h-4" />
+            <Building2 className="w-3.5 h-3.5" />
             <span>PEE Entreprise</span>
           </button>
         </div>
 
         {/* Formulaire */}
-        <form onSubmit={handleSubmit} className="p-5 space-y-4 overflow-y-auto flex-1">
+        <form onSubmit={handleSubmit} className="p-4 space-y-3.5 overflow-y-auto flex-1">
           {errorMsg && (
-            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-medium">
+            <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-medium">
               {errorMsg}
             </div>
           )}
 
           {/* Sélection du compte */}
           <div>
-            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+            <label className="block text-xs font-medium text-slate-300 mb-1">
               Compte de destination
             </label>
             <select
               value={selectedAccountId}
               onChange={(e) => setSelectedAccountId(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-blue-500"
+              className="w-full px-2.5 py-1.5 bg-[#0B0F17] border border-[#1C2536] rounded-md text-xs text-white focus:outline-none focus:border-blue-500"
             >
               {accounts.map((acc) => (
                 <option key={acc.id} value={acc.id}>

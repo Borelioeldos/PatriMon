@@ -52,8 +52,8 @@ class PortfolioService:
                 "notes": holding.notes,
             }
 
-        # ── Cotation en direct pour titres cotés ──
-        if not holding.is_manual and holding.symbol:
+        # ── Cotation en direct pour titres cotés (uniquement si position active en portefeuille) ──
+        if not holding.is_manual and holding.symbol and holding.quantity > 0:
             quote = market_service.get_quote(holding.symbol, force_refresh=force_refresh)
             if quote.get("success") and quote.get("current_price"):
                 current_price = quote["current_price"]
@@ -301,6 +301,8 @@ class PortfolioService:
             session,
             total_net_worth=round(inv_net_worth, 2) if inv_net_worth > 0 else total_net_worth,
             total_invested=round(inv_invested, 2) if inv_invested > 0 else total_invested,
+            accounts=accounts,
+            holdings_by_acc=holdings_by_acc,
         )
 
         return {

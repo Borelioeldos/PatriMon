@@ -319,6 +319,62 @@ class TestFinancialCalculations(unittest.TestCase):
         self.assertIn("GBP", market._currency_cache_times)
         self.assertNotEqual(market._currency_cache_times["USD"], market._currency_cache_times["GBP"])
 
+    def test_dividend_analytics_and_account_performance(self):
+        """Vérifie le calcul analytique des dividendes et la ventilation par compte (Lot B)."""
+        today = date.today()
+        # Ajouter une holding PEA
+        holding = Holding(
+            account_id=self.pea_account.id,
+            symbol="CW8.PA",
+            name="Amundi MSCI World",
+            asset_class=AssetClass.ETF,
+            quantity=10.0,
+            unit_cost=400.0,
+            unit_cost_eur=400.0,
+            current_price=500.0,
+            currency="EUR",
+        )
+        self.session.add(holding)
+        self.session.commit()
+        self.session.refresh(holding)
+
+        # Ajouter des dividendes
+        tx_div = Transaction(
+            account_id=self.pea_account.id,
+            holding_id=holding.id,
+            type=TransactionType.DIVIDEND,
+            transaction_date=today,
+            symbol="CW8.PA",
+            amount=50.0,
+            amount_eur=50.0,
+        )
+        self.session.add(tx_div)
+        self.session.commit()
+
+        # Test dividend analytics
+        analytics = performance_service.get_dividend_analytics(self.session)
+        self.assertEqual(analytics["total_eur"], 50.0)
+        self.assertEqual(analytics["operations_count"], 1)
+        self.assertEqual(len(analytics["assets_ranked"]), 1)
+        self.assertEqual(analytics["assets_ranked"][0]["symbol"], "CW8.PA")
+
+        # Test performance by account
+        holdings_by_acc = {
+            self.pea_account.id: [{
+                "symbol": "CW8.PA",
+                "quantity": 10.0,
+                "total_value_eur": 5000.0,
+                "total_invested_eur": 4000.0,
+            }]
+        }
+        acc_perfs = performance_service.get_performance_by_account(
+            self.session, [self.pea_account, self.checking_account], holdings_by_acc
+        )
+        self.assertEqual(len(acc_perfs), 1)  # Only PEA is investment account
+        self.assertEqual(acc_perfs[0]["account_id"], self.pea_account.id)
+        self.assertEqual(acc_perfs[0]["dividends_eur"], 50.0)
+        self.assertEqual(acc_perfs[0]["dividends_count"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

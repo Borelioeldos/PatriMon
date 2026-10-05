@@ -68,7 +68,7 @@ class MarketService:
             "SIE": "SIE.DE",
             "VOW3": "VOW3.DE",
             "CSX5.PA": "CSX5.AS",
-            "853292": "BMW.DE",
+            "853292": "MC.PA",
             "IUSA": "IUSA.DE",
             "BTC": "BTC-EUR",
         }

@@ -207,7 +207,7 @@ class GoogleDriveService:
             "total_files": len(bourso_files) + len(revolut_files) + len(bnp_files),
             "categories": {
                 "bourso": {
-                    "label": "Boursorama PEA",
+                    "label": "BoursoBank PEA",
                     "files": sorted(bourso_files, key=lambda x: x["name"], reverse=True),
                     "total": len(bourso_files),
                     "pending": sum(1 for f in bourso_files if not f["is_synced"]),
@@ -230,8 +230,8 @@ class GoogleDriveService:
     def sync_all(self, session: Session) -> Dict[str, Any]:
         """
         Synchronise l'ensemble des fichiers du dossier Bourse :
-        - Traite les avis d'opéré Boursorama
-        - Traite le relevé de titres Boursorama
+        - Traite les avis d'opéré BoursoBank
+        - Traite le relevé de titres BoursoBank
         - Traite les 4 CSV Revolut
         - Traite le relevé BNP EE
         - Enregistre chaque fichier traité dans DriveSyncLog avec son md5Checksum
@@ -266,7 +266,7 @@ class GoogleDriveService:
             ).first()
         revolut_account_id = revolut_account.id if revolut_account else 3
 
-        # 1. Boursorama (Avis d'opérés puis Relevé de titres)
+        # 1. BoursoBank (Avis d'opérés puis Relevé de titres)
         bourso_files = categories.get("bourso", {}).get("files", [])
         
         # Traiter d'abord les avis d'opéré
@@ -302,7 +302,7 @@ class GoogleDriveService:
                         md5=md5,
                         tx_count=1 if trade_data else 0,
                         holdings_count=0,
-                        details=f"Avis d'opéré Boursorama {trade_data.get('order_ref') if trade_data else ''}"
+                        details=f"Avis d'opéré BoursoBank {trade_data.get('order_ref') if trade_data else ''}"
                     )
                     stats["files_processed"] += 1
 

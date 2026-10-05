@@ -1,5 +1,5 @@
 """
-PatriMon — Parseur des Relevés de Titres Mensuels Boursorama PEA (PDF).
+PatriMon — Parseur des Relevés de Titres Mensuels BoursoBank PEA (PDF).
 Extrait le solde espèces du PEA, ainsi que l'inventaire des positions détenues (ETF/Actions),
 les quantités exactes, les cours du jour et les PRU fiscaux.
 """
@@ -39,7 +39,7 @@ class BoursoStatementParser:
 
     @classmethod
     def parse_pdf_bytes(cls, pdf_bytes: bytes) -> Optional[Dict[str, Any]]:
-        """Extrait le solde espèces et les positions d'un relevé de compte titres / PEA Boursorama."""
+        """Extrait le solde espèces et les positions d'un relevé de compte titres / PEA BoursoBank."""
         try:
             reader = PdfReader(io.BytesIO(pdf_bytes))
             full_text = ""
@@ -128,7 +128,7 @@ class BoursoStatementParser:
             }
 
         except Exception as e:
-            logger.error(f"Erreur lors du parsing du relevé de titres Boursorama : {e}")
+            logger.error(f"Erreur lors du parsing du relevé de titres BoursoBank : {e}")
             return None
 
     @classmethod
@@ -191,7 +191,7 @@ class BoursoStatementParser:
                     currency="EUR",
                     is_manual=False,
                     last_price_updated_at=now_utc,
-                    notes=f"Importé du relevé de titres Boursorama (ISIN: {pos.get('isin')})",
+                    notes=f"Importé du relevé de titres BoursoBank (ISIN: {pos.get('isin')})",
                 )
                 session.add(holding)
 

@@ -9,6 +9,7 @@ import logging
 import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+import re
 from typing import Dict, Any, List, Optional
 import httpx
 import jwt
@@ -26,8 +27,8 @@ CONFIG_FILE_PATH = Path(__file__).resolve().parent.parent.parent / "open_banking
 POPULAR_INSTITUTIONS = [
     {
         "id": "boursobank",
-        "name": "Boursorama Banque",
-        "title": "BoursoBank (ex-Boursorama)",
+        "name": "BoursoBank",
+        "title": "BoursoBank",
         "country": "FR",
         "logo": "https://cdn.nordigen.com/ais/BOURSOBANK_BOUSFRPP.png",
     },
@@ -473,6 +474,8 @@ class OpenBankingService:
         """
         accounts = session.exec(select(Account)).all()
         inst_clean = institution_name.strip()
+        if "bourso" in inst_clean.lower():
+            inst_clean = "BoursoBank"
         expected_type = account_type or self._determine_account_type(account_name, inst_clean)
 
         # 1. Vérifier si un compte est déjà mappé avec cet IBAN
@@ -544,7 +547,7 @@ class OpenBankingService:
             return matched
 
         # 3. Création automatique du nouveau compte
-        display_name = account_name.strip()
+        display_name = re.sub(r'boursorama(?:\s+banque)?', 'BoursoBank', account_name.strip(), flags=re.IGNORECASE)
         if inst_clean.lower() not in display_name.lower():
             display_name = f"{inst_clean} - {display_name}"
 

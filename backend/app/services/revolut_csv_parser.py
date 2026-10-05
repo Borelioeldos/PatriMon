@@ -19,6 +19,21 @@ from app.services.transaction_service import transaction_service
 
 logger = logging.getLogger("revolut_csv_parser")
 
+REVOLUT_TICKER_NAMES = {
+    "853292": "LVMH Moët Hennessy Louis Vuitton",
+    "SIE": "Siemens AG",
+    "VOW3": "Volkswagen AG",
+    "STLA": "Stellantis N.V.",
+    "BA": "Boeing Co",
+    "TTWO": "Take-Two Interactive",
+    "NVDA": "NVIDIA Corporation",
+    "AMZN": "Amazon.com Inc",
+    "AAPL": "Apple Inc",
+    "NFLX": "Netflix Inc",
+    "TSM": "Taiwan Semiconductor",
+    "IUSA": "iShares Core S&P 500 UCITS ETF",
+}
+
 
 class RevolutCsvParser:
 
@@ -162,7 +177,7 @@ class RevolutCsvParser:
                 "type": op_type,
                 "date": parsed_date,
                 "symbol": ticker,
-                "name": ticker,
+                "name": REVOLUT_TICKER_NAMES.get(ticker, ticker),
                 "quantity": quantity,
                 "unit_price": unit_price,
                 "unit_price_eur": unit_price_eur,

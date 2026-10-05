@@ -1,5 +1,10 @@
-import React from 'react';
-import { RefreshCw, PlusCircle, Wallet, TrendingUp, Radio, ArrowLeftRight, Landmark, Building2, Cloud } from 'lucide-react';
+import React, { useState } from 'react';
+import { 
+  RefreshCw, Plus, Wallet, TrendingUp, Radio, 
+  Landmark, Building2, Cloud, ChevronDown, Check,
+  SlidersHorizontal, ArrowLeftRight, Layers, Eye, EyeOff,
+  Sparkles, ShieldCheck
+} from 'lucide-react';
 
 export default function Navbar({ 
   onRefresh, 
@@ -13,126 +18,231 @@ export default function Navbar({
   lastUpdated,
   autoRefresh,
   onToggleAutoRefresh,
-  countdown
+  countdown,
+  activeView = 'overview',
+  onSelectView,
+  privacyMode = false,
+  onTogglePrivacyMode
 }) {
+  const [isActionsOpen, setIsActionsOpen] = useState(false);
+
+  const views = [
+    { id: 'overview', label: "Vue d'ensemble" },
+    { id: 'accounts', label: 'Comptes & Positions' },
+    { id: 'analytics', label: 'Performance & Enveloppes' },
+    { id: 'transactions', label: 'Journal des Opérations' },
+  ];
+
   return (
-    <header className="sticky top-0 z-40 bg-[#0A0F1D]/90 backdrop-blur-md border-b border-slate-800/80 px-4 sm:px-6 lg:px-8 py-3 transition-all">
-      <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
-        {/* Logo & Titre */}
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-400 flex items-center justify-center shadow-lg shadow-blue-500/25 ring-1 ring-white/10">
-            <TrendingUp className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-extrabold text-lg tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-400 bg-clip-text text-transparent">
+    <header className="sticky top-0 z-40 px-3 sm:px-6 pt-3 pb-2 transition-all">
+      {/* Floating Island Navigation Enclosure */}
+      <div className="max-w-7xl mx-auto bg-[#090E1A]/85 backdrop-blur-2xl border border-white/[0.08] shadow-[0_16px_45px_-10px_rgba(0,0,0,0.7)] rounded-2xl px-3.5 sm:px-5 py-2.5 flex flex-col md:flex-row md:items-center justify-between gap-3">
+        
+        {/* Brand identity (Épuré & Haute Précision) */}
+        <div className="flex items-center justify-between">
+          <div 
+            className="flex items-center gap-2.5 cursor-pointer group select-none" 
+            onClick={() => onSelectView && onSelectView('overview')}
+            title="Retour à la vue d'ensemble"
+          >
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-blue-500 flex items-center justify-center text-white shadow-[0_2px_12px_rgba(37,99,235,0.35)] group-hover:scale-105 transition-transform duration-200">
+              <TrendingUp className="w-4 h-4 stroke-[2.5]" />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="font-bold text-base tracking-tight text-white group-hover:text-blue-200 transition-colors">
                 PatriMon
               </span>
-              
-              {/* Badge Marché Temps Réel */}
-              <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold tracking-wide">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-                <span>LIVE DIRECT</span>
-              </div>
             </div>
+          </div>
 
-            <div className="flex items-center gap-2 text-[11px] text-slate-400">
-              {lastUpdated && (
-                <span>Cotations : {lastUpdated}</span>
-              )}
-              {autoRefresh && (
-                <span className="hidden sm:inline text-blue-400 font-medium">
-                  • Rafraîchissement auto dans {countdown}s
-                </span>
-              )}
-            </div>
+          {/* Mobile view quick toggles */}
+          <div className="flex md:hidden items-center gap-1.5">
+            {onTogglePrivacyMode && (
+              <button
+                onClick={onTogglePrivacyMode}
+                className={`p-2 rounded-xl border text-xs transition-all btn-haptic ${
+                  privacyMode 
+                    ? 'bg-purple-500/20 border-purple-500/40 text-purple-300' 
+                    : 'bg-white/[0.03] border-white/[0.08] text-slate-400'
+                }`}
+                title="Mode Confidentialité"
+              >
+                {privacyMode ? <EyeOff className="w-3.5 h-3.5 text-purple-400" /> : <Eye className="w-3.5 h-3.5" />}
+              </button>
+            )}
+            <button
+              onClick={onRefresh}
+              disabled={isRefreshing}
+              className="p-2 rounded-xl bg-white/[0.03] border border-white/[0.08] text-slate-300 hover:text-white btn-haptic"
+              title="Rafraîchir"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-blue-400' : ''}`} />
+            </button>
+            <button
+              onClick={onOpenAddTransaction}
+              className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-xs font-semibold flex items-center gap-1 shadow-md btn-haptic"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Ordre</span>
+            </button>
           </div>
         </div>
 
-        {/* Actions rapides */}
-        <div className="flex items-center gap-2 sm:gap-3">
-          {/* Toggle Auto-refresh */}
+        {/* Perspective navigation switcher (Pills with physical feel) */}
+        {onSelectView && (
+          <nav className="flex items-center gap-1 bg-[#060A14]/70 p-1 rounded-xl border border-white/[0.05] overflow-x-auto no-scrollbar shadow-[inset_0_1px_2px_rgba(0,0,0,0.5)]">
+            {views.map((v) => {
+              const isActive = activeView === v.id;
+              return (
+                <button
+                  key={v.id}
+                  onClick={() => onSelectView(v.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs tracking-tight whitespace-nowrap transition-all duration-200 ${
+                    isActive 
+                      ? 'bg-gradient-to-b from-[#1E293B] to-[#121826] text-white border border-white/[0.12] shadow-[0_2px_8px_rgba(0,0,0,0.3)] font-semibold' 
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.03]'
+                  }`}
+                >
+                  {v.label}
+                </button>
+              );
+            })}
+          </nav>
+        )}
+
+        {/* Desktop command bar & quick actions */}
+        <div className="hidden md:flex items-center gap-2">
+          {/* Toggle Privacy Mode */}
+          {onTogglePrivacyMode && (
+            <button
+              onClick={onTogglePrivacyMode}
+              className={`px-2.5 py-1.5 rounded-xl border text-xs font-medium transition-all btn-haptic flex items-center gap-1.5 ${
+                privacyMode 
+                  ? 'bg-purple-500/15 border-purple-500/35 text-purple-300 shadow-[0_0_20px_rgba(168,85,247,0.2)]' 
+                  : 'bg-white/[0.03] border-white/[0.08] text-slate-400 hover:text-slate-200 hover:bg-white/[0.06]'
+              }`}
+              title="Mode Confidentialité (Flouter les montants - Raccourci 'P')"
+            >
+              {privacyMode ? <EyeOff className="w-3.5 h-3.5 text-purple-400" /> : <Eye className="w-3.5 h-3.5 text-slate-400" />}
+              <span className="hidden xl:inline">{privacyMode ? 'Discret' : 'Public'}</span>
+            </button>
+          )}
+
+          {/* Toggle auto-refresh */}
           <button
             onClick={onToggleAutoRefresh}
-            className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
+            className={`px-2.5 py-1.5 rounded-xl border text-xs font-medium transition-all btn-haptic flex items-center gap-1.5 ${
               autoRefresh 
-                ? 'bg-blue-600/15 border-blue-500/40 text-blue-400' 
-                : 'bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-300'
+                ? 'bg-blue-500/10 border-blue-500/30 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.15)]' 
+                : 'bg-white/[0.03] border-white/[0.08] text-slate-500 hover:text-slate-300 hover:bg-white/[0.06]'
             }`}
-            title="Activer/désactiver l'actualisation automatique toutes les 30s"
+            title={`Actualisation automatique (30s)${lastUpdated ? ` • Dernière cotation : ${lastUpdated}` : ''}`}
           >
-            <Radio className={`w-3.5 h-3.5 ${autoRefresh ? 'animate-pulse text-blue-400' : ''}`} />
-            <span>Auto (30s)</span>
+            <Radio className={`w-3 h-3 ${autoRefresh ? 'animate-pulse text-blue-400' : ''}`} />
+            <span>{autoRefresh ? `${countdown}s` : '30s'}</span>
           </button>
 
-          {/* Bouton Actualiser */}
+          {/* Actualiser manuel */}
           <button
             onClick={onRefresh}
             disabled={isRefreshing}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700/80 text-xs sm:text-sm font-semibold transition-all shadow-sm active:scale-95 disabled:opacity-50"
-            title="Rafraîchir immédiatement les cours boursiers et devises"
+            className="px-2.5 py-1.5 rounded-xl bg-white/[0.03] hover:bg-white/[0.07] text-slate-300 hover:text-white border border-white/[0.08] text-xs font-medium transition-all btn-haptic flex items-center gap-1.5 disabled:opacity-50"
+            title={`Rafraîchir les cotations maintenant${lastUpdated ? ` (Dernière MàJ : ${lastUpdated})` : ''}`}
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-blue-400' : ''}`} />
-            <span className="hidden md:inline">{isRefreshing ? 'Actualisation...' : 'Actualiser'}</span>
+            <span className="hidden lg:inline">{isRefreshing ? 'Calcul...' : 'Marché'}</span>
           </button>
 
-          {/* Bouton Synchronisation Bancaire DSP2 */}
-          <button
-            onClick={onOpenBankSync}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700/80 text-xs sm:text-sm font-semibold transition-all active:scale-95"
-            title="Synchronisation bancaire automatique DSP2 (BoursoBank, BNP Paribas, Revolut...)"
-          >
-            <Landmark className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="hidden lg:inline">Banques DSP2</span>
-          </button>
+          {/* Menu Outils & Intégrations */}
+          <div className="relative">
+            <button
+              onClick={() => setIsActionsOpen(!isActionsOpen)}
+              className="px-2.5 py-1.5 rounded-xl bg-white/[0.03] hover:bg-white/[0.07] text-slate-300 hover:text-white border border-white/[0.08] text-xs font-medium transition-all btn-haptic flex items-center gap-1.5"
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400" />
+              <span>Outils</span>
+              <ChevronDown className="w-3 h-3 text-slate-500" />
+            </button>
 
-          {/* Bouton Import Relevé BNP PEE / PERO */}
-          <button
-            onClick={onOpenPeeImport}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700/80 text-xs sm:text-sm font-semibold transition-all active:scale-95"
-            title="Importer un relevé de situation officiel BNP Épargne Entreprise (PDF / CSV)"
-          >
-            <Building2 className="w-3.5 h-3.5 text-amber-400" />
-            <span className="hidden lg:inline">Relevé PEE</span>
-          </button>
+            {isActionsOpen && (
+              <>
+                <div 
+                  className="fixed inset-0 z-40" 
+                  onClick={() => setIsActionsOpen(false)}
+                />
+                <div className="absolute right-0 mt-2 w-60 bg-[#0E1524] border border-white/[0.1] rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-2 z-50 space-y-1 animate-fadeIn">
+                  <div className="text-[10px] font-mono uppercase tracking-wider text-slate-400 px-2.5 py-1">
+                    Connecteurs bancaires
+                  </div>
+                  
+                  <button
+                    onClick={() => { setIsActionsOpen(false); onOpenBankSync(); }}
+                    className="w-full px-2.5 py-2 rounded-xl text-left text-xs text-slate-300 hover:text-white hover:bg-white/[0.06] flex items-center gap-2.5 transition-colors"
+                  >
+                    <Landmark className="w-4 h-4 text-cyan-400" />
+                    <div>
+                      <div className="font-medium">Synchro DSP2</div>
+                      <div className="text-[10px] text-slate-400">BoursoBank, Revolut, BNP</div>
+                    </div>
+                  </button>
 
-          {/* Bouton Google Drive Bourse */}
-          <button
-            onClick={onOpenDriveSync}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 hover:text-blue-300 border border-blue-500/30 text-xs sm:text-sm font-semibold transition-all active:scale-95"
-            title="Synchroniser vos comptes boursiers (PEA, CTO, Crypto, PEE) depuis votre Google Drive"
-          >
-            <Cloud className="w-3.5 h-3.5 text-blue-400" />
-            <span className="hidden md:inline">Google Drive</span>
-          </button>
+                  <button
+                    onClick={() => { setIsActionsOpen(false); onOpenPeeImport(); }}
+                    className="w-full px-2.5 py-2 rounded-xl text-left text-xs text-slate-300 hover:text-white hover:bg-white/[0.06] flex items-center gap-2.5 transition-colors"
+                  >
+                    <Building2 className="w-4 h-4 text-amber-400" />
+                    <div>
+                      <div className="font-medium">Relevé BNP PEE / PERO</div>
+                      <div className="text-[10px] text-slate-400">Import PDF ou CSV d'avoirs</div>
+                    </div>
+                  </button>
 
-          {/* Bouton Nouveau Compte */}
-          <button
-            onClick={onOpenAddAccount}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700/80 text-xs sm:text-sm font-semibold transition-all active:scale-95"
-            title="Créer un nouveau compte ou livret"
-          >
-            <Wallet className="w-3.5 h-3.5 text-indigo-400" />
-            <span className="hidden sm:inline">+ Compte</span>
-          </button>
+                  <button
+                    onClick={() => { setIsActionsOpen(false); onOpenDriveSync(); }}
+                    className="w-full px-2.5 py-2 rounded-xl text-left text-xs text-slate-300 hover:text-white hover:bg-white/[0.06] flex items-center gap-2.5 transition-colors"
+                  >
+                    <Cloud className="w-4 h-4 text-blue-400" />
+                    <div>
+                      <div className="font-medium">Google Drive Bourse</div>
+                      <div className="text-[10px] text-slate-400">Historique ordres exportés</div>
+                    </div>
+                  </button>
 
-          {/* Bouton Nouvelle Transaction / Opération */}
+                  <div className="border-t border-white/[0.06] my-1 pt-1" />
+
+                  <div className="text-[10px] font-mono uppercase tracking-wider text-slate-400 px-2.5 py-1">
+                    Création manuelle
+                  </div>
+
+                  <button
+                    onClick={() => { setIsActionsOpen(false); onOpenAddAccount(); }}
+                    className="w-full px-2.5 py-1.5 rounded-xl text-left text-xs text-slate-300 hover:text-white hover:bg-white/[0.06] flex items-center gap-2 transition-colors"
+                  >
+                    <Wallet className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Nouveau compte / livret</span>
+                  </button>
+
+                  <button
+                    onClick={() => { setIsActionsOpen(false); onOpenAddAsset(); }}
+                    className="w-full px-2.5 py-1.5 rounded-xl text-left text-xs text-slate-300 hover:text-white hover:bg-white/[0.06] flex items-center gap-2 transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-blue-400" />
+                    <span>Nouvelle position financière</span>
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Action maîtresse : Button-in-Button CTA */}
           <button
             onClick={onOpenAddTransaction}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700/80 text-xs sm:text-sm font-semibold transition-all active:scale-95"
-            title="Enregistrer un achat, une vente, un versement ou un dividende"
+            className="pl-3.5 pr-2 py-1.5 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold shadow-[0_4px_20px_rgba(37,99,235,0.35)] hover:shadow-[0_6px_25px_rgba(37,99,235,0.5)] transition-all btn-haptic flex items-center gap-2 group"
           >
-            <ArrowLeftRight className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="hidden sm:inline">+ Opération</span>
-          </button>
-
-          {/* Bouton Ajouter Actif / Livret */}
-          <button
-            onClick={onOpenAddAsset}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs sm:text-sm font-bold transition-all shadow-lg shadow-blue-600/30 active:scale-95 ring-1 ring-white/20"
-          >
-            <PlusCircle className="w-4 h-4" />
-            <span>+ Actif</span>
+            <span>Nouvel ordre</span>
+            <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center group-hover:rotate-90 transition-transform duration-300">
+              <Plus className="w-3 h-3 text-white" />
+            </div>
           </button>
         </div>
       </div>

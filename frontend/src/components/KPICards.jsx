@@ -1,99 +1,156 @@
 import React from 'react';
-import { TrendingUp, TrendingDown, PiggyBank, Landmark, ShieldCheck, ArrowUpRight, ArrowDownRight } from 'lucide-react';
-import { formatEUR, formatEURPrecise, formatEURCompact } from '../utils/format';
+import { 
+  TrendingUp, TrendingDown, PiggyBank, Landmark, 
+  ArrowUpRight, ArrowDownRight, Wallet, Coins
+} from 'lucide-react';
+import { formatEUR, formatEURPrecise, formatPercent } from '../utils/format';
 
-export default function KPICards({ summary }) {
+export default function KPICards({ summary, onOpenDividendsModal }) {
   const netWorth = summary?.total_net_worth || 0;
   const invested = summary?.total_invested || 0;
   const gain = summary?.total_gain || 0;
   const gainPct = summary?.total_gain_percent || 0;
-  // F7: Liquidités incluant les livrets d'épargne (total_cash_and_savings)
   const totalCash = summary?.total_cash_and_savings ?? summary?.total_cash ?? 0;
+  
+  // Périmètre investissement pur
+  const invNetWorth = summary?.investment_net_worth ?? Math.max(netWorth - totalCash, 0);
+  const invInvested = summary?.investment_invested ?? Math.max(invested - totalCash, 0);
+  const invGain = summary?.investment_gain ?? (invNetWorth - invInvested);
+  const invGainPct = summary?.investment_gain_percent ?? (invInvested > 0 ? (invGain / invInvested) * 100 : 0);
+
+  const metrics = summary?.performance_metrics || {};
+  const twr = metrics?.twr?.twr_percent;
+  const mwr = metrics?.mwr?.mwr_percent;
+  const dividends = metrics?.stats?.total_dividends_eur || metrics?.dividend_analytics?.total_eur || 0;
 
   const isPositive = gain >= 0;
-  const cashRatio = netWorth > 0 ? ((totalCash / netWorth) * 100).toFixed(1) : 0;
+  const isInvPositive = invGain >= 0;
+  const cashRatio = netWorth > 0 ? ((totalCash / netWorth) * 100).toFixed(1) : '0.0';
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      {/* 1. Patrimoine Total Net */}
-      <div className="relative overflow-hidden bg-[#111827]/80 border border-slate-800 rounded-2xl p-5 shadow-xl hover:border-slate-700 transition-all group">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-2xl -mr-10 -mt-10 group-hover:bg-blue-500/20 transition-all pointer-events-none" />
-        <div className="flex items-center justify-between text-slate-400 mb-2">
-          <span className="text-xs uppercase font-semibold tracking-wider">Patrimoine Net Total</span>
-          <div className="p-2 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20">
-            <Landmark className="w-4 h-4" />
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
+      {/* ── 1. Patrimoine Total Net ── */}
+      <div className="bg-[#0D131F] border border-[#1E293B] hover:border-slate-600/60 rounded-2xl p-4 sm:p-5 transition-all duration-200 shadow-sm flex flex-col justify-between">
+        <div>
+          <div className="flex items-center justify-between text-slate-400 mb-2.5">
+            <span className="text-xs font-medium text-slate-300">
+              Patrimoine net total
+            </span>
+            <div className="w-7 h-7 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+              <Landmark className="w-3.5 h-3.5" />
+            </div>
+          </div>
+
+          <div className="text-2xl sm:text-[26px] font-bold text-white tracking-tight tabular-nums">
+            {formatEURPrecise(netWorth)}
           </div>
         </div>
-        <div className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-          {formatEURPrecise(netWorth)}
-        </div>
-        <div className="mt-3 flex items-center gap-2 text-xs">
-          <span className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full font-semibold ${
-            isPositive ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
+
+        <div className="mt-3 pt-3 border-t border-[#1C2638] flex items-center justify-between text-xs">
+          <span className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md font-semibold text-[11px] tabular-nums ${
+            isPositive 
+              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+              : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
           }`}>
-            {isPositive ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
-            {isPositive ? `+${gainPct}%` : `${gainPct}%`}
+            {isPositive ? <ArrowUpRight className="w-3 h-3 stroke-[2.5]" /> : <ArrowDownRight className="w-3 h-3 stroke-[2.5]" />}
+            <span>{isPositive ? `+${formatEUR(gain)}` : formatEUR(gain)}</span>
+            <span className="opacity-80">({isPositive ? `+${gainPct.toFixed(2)}%` : `${gainPct.toFixed(2)}%`})</span>
           </span>
-          <span className="text-slate-400">gain global</span>
+          <span className="text-slate-400 text-[11px] truncate">
+            sur {formatEUR(invested)}
+          </span>
         </div>
       </div>
 
-      {/* 2. Plus-Value Latente */}
-      <div className="relative overflow-hidden bg-[#111827]/80 border border-slate-800 rounded-2xl p-5 shadow-xl hover:border-slate-700 transition-all group">
-        <div className={`absolute top-0 right-0 w-32 h-32 rounded-full blur-2xl -mr-10 -mt-10 transition-all pointer-events-none ${
-          isPositive ? 'bg-emerald-500/10 group-hover:bg-emerald-500/20' : 'bg-rose-500/10 group-hover:bg-rose-500/20'
-        }`} />
-        <div className="flex items-center justify-between text-slate-400 mb-2">
-          <span className="text-xs uppercase font-semibold tracking-wider">Plus / Moins-Value</span>
-          <div className={`p-2 rounded-xl border ${
-            isPositive ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+      {/* ── 2. Portefeuille d'Investissement ── */}
+      <div className="bg-[#0D131F] border border-[#1E293B] hover:border-slate-600/60 rounded-2xl p-4 sm:p-5 transition-all duration-200 shadow-sm flex flex-col justify-between">
+        <div>
+          <div className="flex items-center justify-between text-slate-400 mb-2.5">
+            <span className="text-xs font-medium text-slate-300">
+              Investissements (Bourse & PEE)
+            </span>
+            <div className="w-7 h-7 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+              <TrendingUp className="w-3.5 h-3.5" />
+            </div>
+          </div>
+
+          <div className="text-2xl sm:text-[26px] font-bold text-white tracking-tight tabular-nums">
+            {formatEUR(invNetWorth)}
+          </div>
+        </div>
+
+        <div className="mt-3 pt-3 border-t border-[#1C2638] flex items-center justify-between text-xs">
+          <span className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md font-semibold text-[11px] tabular-nums ${
+            isInvPositive 
+              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+              : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
           }`}>
-            {isPositive ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-          </div>
-        </div>
-        <div className={`text-2xl sm:text-3xl font-extrabold tracking-tight ${isPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
-          {isPositive ? `+${formatEURPrecise(gain)}` : formatEURPrecise(gain)}
-        </div>
-        <div className="mt-3 flex items-center gap-2 text-xs text-slate-400">
-          <span>Sur investissement de <strong className="text-slate-200">{formatEURCompact(invested)}</strong></span>
+            {isInvPositive ? `+${formatEUR(invGain)}` : formatEUR(invGain)}
+            <span className="opacity-80">({isInvPositive ? `+${invGainPct.toFixed(1)}%` : `${invGainPct.toFixed(1)}%`})</span>
+          </span>
+          <span className="text-slate-400 text-[11px]">
+            {mwr !== undefined ? `TRI : ${formatPercent(mwr)}` : 'Risque'}
+          </span>
         </div>
       </div>
 
-      {/* 3. Liquidités & Livrets */}
-      <div className="relative overflow-hidden bg-[#111827]/80 border border-slate-800 rounded-2xl p-5 shadow-xl hover:border-slate-700 transition-all group">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/10 rounded-full blur-2xl -mr-10 -mt-10 group-hover:bg-cyan-500/20 transition-all pointer-events-none" />
-        <div className="flex items-center justify-between text-slate-400 mb-2">
-          <span className="text-xs uppercase font-semibold tracking-wider">Liquidités & Épargne</span>
-          <div className="p-2 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-            <PiggyBank className="w-4 h-4" />
+      {/* ── 3. Trésorerie & Épargne ── */}
+      <div className="bg-[#0D131F] border border-[#1E293B] hover:border-slate-600/60 rounded-2xl p-4 sm:p-5 transition-all duration-200 shadow-sm flex flex-col justify-between">
+        <div>
+          <div className="flex items-center justify-between text-slate-400 mb-2.5">
+            <span className="text-xs font-medium text-slate-300">
+              Trésorerie & Épargne
+            </span>
+            <div className="w-7 h-7 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+              <PiggyBank className="w-3.5 h-3.5" />
+            </div>
+          </div>
+
+          <div className="text-2xl sm:text-[26px] font-bold text-white tracking-tight tabular-nums">
+            {formatEUR(totalCash)}
           </div>
         </div>
-        <div className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-          {formatEURPrecise(totalCash)}
-        </div>
-        <div className="mt-3 flex items-center gap-2 text-xs text-slate-400">
-          <span className="px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-medium">
+
+        <div className="mt-3 pt-3 border-t border-[#1C2638] flex items-center justify-between text-xs">
+          <span className="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[11px] font-semibold">
             {cashRatio}% du patrimoine
           </span>
-          <span>(sécurité disponible)</span>
+          <span className="text-slate-400 text-[11px]">
+            Capital garanti
+          </span>
         </div>
       </div>
 
-      {/* 4. Enveloppes Actives */}
-      <div className="relative overflow-hidden bg-[#111827]/80 border border-slate-800 rounded-2xl p-5 shadow-xl hover:border-slate-700 transition-all group">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full blur-2xl -mr-10 -mt-10 group-hover:bg-indigo-500/20 transition-all pointer-events-none" />
-        <div className="flex items-center justify-between text-slate-400 mb-2">
-          <span className="text-xs uppercase font-semibold tracking-wider">Comptes Suivis</span>
-          <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-            <ShieldCheck className="w-4 h-4" />
+      {/* ── 4. Dividendes & Revenus Passifs ── */}
+      <div 
+        onClick={() => onOpenDividendsModal && onOpenDividendsModal()}
+        className={`bg-[#0D131F] border border-[#1E293B] hover:border-emerald-500/50 rounded-2xl p-4 sm:p-5 transition-all duration-200 shadow-sm flex flex-col justify-between ${
+          onOpenDividendsModal ? 'cursor-pointer group' : ''
+        }`}
+        title="Cliquer pour voir le détail des dividendes et détachements"
+      >
+        <div>
+          <div className="flex items-center justify-between text-slate-400 mb-2.5">
+            <span className="text-xs font-medium text-slate-300 group-hover:text-emerald-400 transition-colors">
+              Dividendes perçus
+            </span>
+            <div className="w-7 h-7 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-105 transition-transform">
+              <Coins className="w-3.5 h-3.5" />
+            </div>
+          </div>
+
+          <div className="text-2xl sm:text-[26px] font-bold text-emerald-400 tracking-tight tabular-nums">
+            +{formatEUR(dividends)}
           </div>
         </div>
-        <div className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-          {summary?.accounts?.length || 0} comptes
-        </div>
-        <div className="mt-3 flex items-center gap-1.5 text-xs text-slate-400">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-          <span>BoursoBank, Revolut, BNP & PEE</span>
+
+        <div className="mt-3 pt-3 border-t border-[#1C2638] flex items-center justify-between text-xs">
+          <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[11px] font-semibold">
+            {metrics?.dividend_analytics?.operations_count || 0} détachements
+          </span>
+          <span className="text-blue-400 group-hover:underline text-[11px] font-medium flex items-center gap-0.5">
+            Détails →
+          </span>
         </div>
       </div>
     </div>

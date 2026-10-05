@@ -11,6 +11,7 @@ import AddTransactionModal from './components/AddTransactionModal';
 import PeeImportModal from './components/PeeImportModal';
 import BankSyncModal from './components/BankSyncModal';
 import DriveSyncModal from './components/DriveSyncModal';
+import DividendsModal from './components/DividendsModal';
 import { api } from './services/api';
 import { Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
 
@@ -23,9 +24,45 @@ export default function App() {
   const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState('');
   
+  // Perspective active (navigation par onglets)
+  const [activeView, setActiveView] = useState('overview'); // 'overview' | 'accounts' | 'analytics' | 'transactions'
+
   // Auto-refresh temps réel
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [countdown, setCountdown] = useState(REFRESH_INTERVAL_SECONDS);
+
+  // Mode Confidentialité (floutage en 1-clic des montants sensibles)
+  const [privacyMode, setPrivacyMode] = useState(() => {
+    try {
+      return localStorage.getItem('patrimon_privacy_mode') === 'true';
+    } catch (_) {
+      return false;
+    }
+  });
+
+  const handleTogglePrivacyMode = useCallback(() => {
+    setPrivacyMode(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('patrimon_privacy_mode', String(next));
+      } catch (_) {}
+      return next;
+    });
+  }, []);
+
+  // Raccourci clavier 'P' pour basculer en mode discret
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      const tag = e.target?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable) return;
+      if (e.key === 'p' || e.key === 'P') {
+        e.preventDefault();
+        handleTogglePrivacyMode();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleTogglePrivacyMode]);
 
   // Modals state
   const [isAddAssetOpen, setIsAddAssetOpen] = useState(false);
@@ -34,6 +71,7 @@ export default function App() {
   const [isPeeImportOpen, setIsPeeImportOpen] = useState(false);
   const [isBankSyncOpen, setIsBankSyncOpen] = useState(false);
   const [isDriveSyncOpen, setIsDriveSyncOpen] = useState(false);
+  const [isDividendsModalOpen, setIsDividendsModalOpen] = useState(false);
   const [activeAccountForAsset, setActiveAccountForAsset] = useState(null);
   const [activeAccountForTransaction, setActiveAccountForTransaction] = useState(null);
 
@@ -190,7 +228,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0A0F1D] text-slate-100 flex flex-col font-sans">
+    <div className={`min-h-screen bg-[#0B0F17] text-slate-100 flex flex-col font-sans selection:bg-blue-600 selection:text-white ${privacyMode ? 'privacy-active' : ''}`}>
       <Navbar
         onRefresh={handleRefresh}
         isRefreshing={isRefreshing}
@@ -204,19 +242,23 @@ export default function App() {
         autoRefresh={autoRefresh}
         onToggleAutoRefresh={handleToggleAutoRefresh}
         countdown={countdown}
+        activeView={activeView}
+        onSelectView={setActiveView}
+        privacyMode={privacyMode}
+        onTogglePrivacyMode={handleTogglePrivacyMode}
       />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-5">
         {/* Erreur de connexion */}
         {error && (
-          <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-between gap-3 text-rose-300 text-sm">
+          <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/25 flex items-center justify-between gap-3 text-rose-300 text-xs">
             <div className="flex items-center gap-2">
-              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
               <span>{error}</span>
             </div>
             <button
               onClick={() => fetchPortfolio(false)}
-              className="px-3 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 text-xs font-medium transition-all"
+              className="px-2.5 py-1 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 text-xs font-medium transition-all"
             >
               Réessayer
             </button>
@@ -226,31 +268,31 @@ export default function App() {
         {/* Chargement initial */}
         {isLoading && !summary ? (
           <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-3">
-            <RefreshCw className="w-8 h-8 text-blue-500 animate-spin" />
-            <p className="text-sm text-slate-400">Connexion aux marchés et chargement de votre patrimoine...</p>
+            <RefreshCw className="w-6 h-6 text-blue-500 animate-spin" />
+            <p className="text-xs text-slate-400 font-mono">Connexion aux flux boursiers et lecture du portefeuille...</p>
           </div>
         ) : (
           <>
             {/* Si aucun compte n'est configuré */}
             {summary?.accounts?.length === 0 ? (
-              <div className="bg-[#111827] border border-slate-800 rounded-3xl p-8 text-center max-w-xl mx-auto my-12 shadow-2xl space-y-4">
-                <div className="w-16 h-16 rounded-2xl bg-blue-500/10 text-blue-400 flex items-center justify-center mx-auto border border-blue-500/20">
-                  <Sparkles className="w-8 h-8" />
+              <div className="bg-[#121824] border border-[#1C2536] rounded-xl p-8 text-center max-w-lg mx-auto my-12 shadow-2xl space-y-4">
+                <div className="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center mx-auto border border-blue-500/20">
+                  <Sparkles className="w-6 h-6" />
                 </div>
-                <h2 className="text-xl font-bold text-white">Bienvenue sur votre suivi de patrimoine !</h2>
-                <p className="text-sm text-slate-400">
+                <h2 className="text-base font-semibold text-white">Bienvenue sur votre suivi de patrimoine</h2>
+                <p className="text-xs text-slate-400 leading-relaxed">
                   Aucun compte n'est encore configuré. Vous pouvez pré-configurer automatiquement vos 4 enveloppes (BoursoBank, Revolut, BNP Paribas, PEE) ou créer vos comptes manuellement.
                 </p>
-                <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+                <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2.5">
                   <button
                     onClick={handleSeedAccounts}
-                    className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold text-xs shadow-lg shadow-blue-500/25 transition-all"
+                    className="w-full sm:w-auto px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs shadow-sm transition-all"
                   >
-                    Initialiser mes enveloppes (Recommandé)
+                    Initialiser mes enveloppes
                   </button>
                   <button
                     onClick={() => setIsAddAccountOpen(true)}
-                    className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all"
+                    className="w-full sm:w-auto px-4 py-2 rounded-lg bg-[#0B0F17] hover:bg-[#172030] text-slate-300 text-xs font-medium border border-[#1C2536] transition-all"
                   >
                     Créer un compte personnalisé
                   </button>
@@ -258,37 +300,76 @@ export default function App() {
               </div>
             ) : (
               <>
-                {/* 1. KPIs majeurs du patrimoine */}
-                <KPICards summary={summary} />
+                {/* 1. Vue d'ensemble (KPIs + Performance + Allocations + Comptes + Transactions) */}
+                {activeView === 'overview' && (
+                  <div className="space-y-5 animate-fadeIn">
+                    <KPICards summary={summary} onOpenDividendsModal={() => setIsDividendsModalOpen(true)} />
+                    <PerformanceMetrics summary={summary} onOpenDividendsModal={() => setIsDividendsModalOpen(true)} />
+                    <AllocationsCharts summary={summary} />
+                    <AccountsList
+                      accounts={summary.accounts}
+                      onDeleteAccount={handleDeleteAccount}
+                      onUpdateAccount={handleUpdateAccount}
+                      onDeleteHolding={handleDeleteHolding}
+                      onOpenAddAssetForAccount={handleOpenAddAsset}
+                      onOpenPeeImport={() => setIsPeeImportOpen(true)}
+                      onOpenBankSync={() => setIsBankSyncOpen(true)}
+                      onOpenAddTransaction={handleOpenAddTransaction}
+                      onHoldingUpdated={() => {
+                        fetchPortfolio(false);
+                        setTxRefreshTrigger(prev => prev + 1);
+                      }}
+                    />
+                    <TransactionsList
+                      onOpenAddTransaction={() => handleOpenAddTransaction(null)}
+                      accounts={summary.accounts}
+                      refreshTrigger={txRefreshTrigger}
+                      onTransactionDeleted={handleTransactionDeleted}
+                    />
+                  </div>
+                )}
 
-                {/* 2. Métriques de performance financière avancées (Phase 2 : TWR, TRI / MWR, Dividendes, Plus-values réalisées) */}
-                <PerformanceMetrics summary={summary} />
+                {/* 2. Vue Comptes & Positions */}
+                {activeView === 'accounts' && (
+                  <div className="space-y-5 animate-fadeIn">
+                    <KPICards summary={summary} onOpenDividendsModal={() => setIsDividendsModalOpen(true)} />
+                    <AccountsList
+                      accounts={summary.accounts}
+                      onDeleteAccount={handleDeleteAccount}
+                      onUpdateAccount={handleUpdateAccount}
+                      onDeleteHolding={handleDeleteHolding}
+                      onOpenAddAssetForAccount={handleOpenAddAsset}
+                      onOpenPeeImport={() => setIsPeeImportOpen(true)}
+                      onOpenBankSync={() => setIsBankSyncOpen(true)}
+                      onOpenAddTransaction={handleOpenAddTransaction}
+                      onHoldingUpdated={() => {
+                        fetchPortfolio(false);
+                        setTxRefreshTrigger(prev => prev + 1);
+                      }}
+                    />
+                  </div>
+                )}
 
-                {/* 3. Graphiques interactifs (Évolution temporelle, vs Benchmarks, Banques, Classes d'actifs, Palmarès) */}
-                <AllocationsCharts summary={summary} />
+                {/* 3. Vue Performance & Indices */}
+                {activeView === 'analytics' && (
+                  <div className="space-y-5 animate-fadeIn">
+                    <KPICards summary={summary} onOpenDividendsModal={() => setIsDividendsModalOpen(true)} />
+                    <PerformanceMetrics summary={summary} onOpenDividendsModal={() => setIsDividendsModalOpen(true)} />
+                    <AllocationsCharts summary={summary} />
+                  </div>
+                )}
 
-                {/* 4. Liste détaillée des comptes & actifs */}
-                <AccountsList
-                  accounts={summary.accounts}
-                  onDeleteAccount={handleDeleteAccount}
-                  onUpdateAccount={handleUpdateAccount}
-                  onDeleteHolding={handleDeleteHolding}
-                  onOpenAddAssetForAccount={handleOpenAddAsset}
-                  onOpenPeeImport={() => setIsPeeImportOpen(true)}
-                  onOpenBankSync={() => setIsBankSyncOpen(true)}
-                  onHoldingUpdated={() => {
-                    fetchPortfolio(false);
-                    setTxRefreshTrigger(prev => prev + 1);
-                  }}
-                />
-
-                {/* 5. Journal des transactions & opérations financières (Phase 2) */}
-                <TransactionsList
-                  onOpenAddTransaction={() => handleOpenAddTransaction(null)}
-                  accounts={summary.accounts}
-                  refreshTrigger={txRefreshTrigger}
-                  onTransactionDeleted={handleTransactionDeleted}
-                />
+                {/* 4. Vue Journal des Transactions */}
+                {activeView === 'transactions' && (
+                  <div className="space-y-5 animate-fadeIn">
+                    <TransactionsList
+                      onOpenAddTransaction={() => handleOpenAddTransaction(null)}
+                      accounts={summary.accounts}
+                      refreshTrigger={txRefreshTrigger}
+                      onTransactionDeleted={handleTransactionDeleted}
+                    />
+                  </div>
+                )}
               </>
             )}
           </>
@@ -342,8 +423,21 @@ export default function App() {
         }}
       />
 
-      <footer className="border-t border-slate-800/60 py-6 text-center text-xs text-slate-400">
-        <p>PatriMon • Suivi de patrimoine automatisé • Flux Euronext, US & Crypto en direct</p>
+      <DividendsModal
+        isOpen={isDividendsModalOpen}
+        onClose={() => setIsDividendsModalOpen(false)}
+        dividendAnalytics={summary?.performance_metrics?.dividend_analytics || {}}
+        accounts={summary?.accounts || []}
+      />
+
+      <footer className="border-t border-white/[0.06] py-8 text-center text-[11px] text-slate-500 font-mono">
+        <p className="flex items-center justify-center gap-2 flex-wrap">
+          <span className="text-slate-400 font-semibold">PatriMon</span>
+          <span>•</span>
+          <span>Ingénierie Patrimoniale de Précision</span>
+          <span>•</span>
+          <span>Flux Live Euronext, US & Crypto</span>
+        </p>
       </footer>
     </div>
   );

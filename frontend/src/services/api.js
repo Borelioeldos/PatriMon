@@ -81,6 +81,10 @@ export const api = {
     return request(`/holdings/${holdingId}`, { method: 'DELETE' }, "Erreur lors de la suppression de l'actif");
   },
 
+  async getHoldingDetail(holdingId) {
+    return request(`/holdings/${holdingId}/detail`, {}, "Erreur lors de la récupération de la fiche valeur");
+  },
+
   // ─── Marché & Recherche ───
   async searchMarket(query) {
     if (!query || query.length < 1) return [];

@@ -85,7 +85,7 @@ export default function DriveSyncModal({ isOpen, onClose, onSyncSuccess }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
       <div 
-        className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-scale-up"
+        className="bg-[#121824] border border-[#222E42] rounded-xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-scale-up"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -202,7 +202,7 @@ export default function DriveSyncModal({ isOpen, onClose, onSyncSuccess }) {
                       B
                     </div>
                     <div>
-                      <h3 className="font-bold text-white text-sm">Boursorama PEA</h3>
+                      <h3 className="font-bold text-white text-sm">BoursoBank PEA</h3>
                       <p className="text-[11px] text-slate-400">Dossier <code className="text-blue-400">Bourso/</code> • Relevés de titres & Avis d'opérés</p>
                     </div>
                   </div>

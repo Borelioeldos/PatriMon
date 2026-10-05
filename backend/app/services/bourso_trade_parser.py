@@ -1,5 +1,5 @@
 """
-PatriMon — Parseur des Avis d'Opéré Boursorama PEA (PDF).
+PatriMon — Parseur des Avis d'Opéré BoursoBank PEA (PDF).
 Extrait les ordres d'achat et de vente d'ETF et d'actions, calcule les frais,
 et crée les transactions avec dédoublonnage via la référence d'ordre unique.
 """
@@ -68,7 +68,7 @@ class BoursoTradeParser:
 
     @classmethod
     def parse_pdf_bytes(cls, pdf_bytes: bytes) -> Optional[Dict[str, Any]]:
-        """Extrait les détails d'un avis d'opéré PDF officiel Boursorama."""
+        """Extrait les détails d'un avis d'opéré PDF officiel BoursoBank."""
         try:
             reader = PdfReader(io.BytesIO(pdf_bytes))
             full_text = ""
@@ -152,7 +152,7 @@ class BoursoTradeParser:
             }
 
         except Exception as e:
-            logger.error(f"Erreur lors du parsing de l'avis d'opéré Boursorama : {e}")
+            logger.error(f"Erreur lors du parsing de l'avis d'opéré BoursoBank : {e}")
             return None
 
     @classmethod
@@ -211,7 +211,7 @@ class BoursoTradeParser:
                 current_price=unit_price,
                 currency="EUR",
                 is_manual=False,
-                notes=f"Créé via avis d'opéré Boursorama PEA (ISIN: {trade_data.get('isin')})",
+                notes=f"Créé via avis d'opéré BoursoBank PEA (ISIN: {trade_data.get('isin')})",
             )
             session.add(holding)
             session.commit()
@@ -235,7 +235,7 @@ class BoursoTradeParser:
             currency="EUR",
             category="Investissement & Épargne",
             external_id=ext_id,
-            notes=f"Ordre d'exécution Boursorama Ref: {trade_data.get('order_ref')} (ISIN: {trade_data.get('isin')})",
+            notes=f"Ordre d'exécution BoursoBank Ref: {trade_data.get('order_ref')} (ISIN: {trade_data.get('isin')})",
         )
         session.add(new_tx)
         session.commit()
@@ -247,5 +247,5 @@ class BoursoTradeParser:
         except Exception as e:
             logger.warning(f"Note recalcul PRU pour {symbol}: {e}")
 
-        logger.info(f"Avis d'opéré Boursorama importé : {tx_type.value} {qty}x {symbol} @ {unit_price} € (Ref: {trade_data.get('order_ref')})")
+        logger.info(f"Avis d'opéré BoursoBank importé : {tx_type.value} {qty}x {symbol} @ {unit_price} € (Ref: {trade_data.get('order_ref')})")
         return new_tx

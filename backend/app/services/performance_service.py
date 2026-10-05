@@ -195,43 +195,73 @@ class PerformanceService:
     # ────────────────────── Calcul du MWR / TRI (XIRR) ──────────────────────
 
     @staticmethod
-    def calculate_mwr(session: Session, current_net_worth: float, current_invested: float) -> Dict[str, Any]:
+    def calculate_mwr(
+        session: Session, current_net_worth: float, current_invested: float, account_id: Optional[int] = None
+    ) -> Dict[str, Any]:
         """
         Calcule le Money-Weighted Return / TRI (Taux de Rendement Interne).
-        Prend en compte la date exacte de chaque flux de capitaux sur le périmètre investissement.
+        Prend en compte la date exacte de chaque flux de capitaux sur le périmètre investissement
+        (ou sur un compte d'investissement spécifique si account_id est renseigné).
         """
         today = date.today()
 
-        # Récupérer les transactions de versements / retraits sur les comptes d'investissement
-        tx_rows = session.exec(
-            select(Transaction, Account)
-            .join(Account, Transaction.account_id == Account.id)
-            .where(Transaction.type.in_([TransactionType.DEPOSIT, TransactionType.WITHDRAWAL]))
-            .where(Account.account_type.in_(INVESTMENT_ACCOUNT_TYPES))
-            .order_by(Transaction.transaction_date.asc())
-        ).all()
+        if account_id is not None:
+            # Flux spécifiques à ce compte
+            tx_rows = session.exec(
+                select(Transaction, Account)
+                .join(Account, Transaction.account_id == Account.id)
+                .where(Transaction.account_id == account_id)
+                .where(Transaction.type.in_([TransactionType.DEPOSIT, TransactionType.WITHDRAWAL]))
+                .order_by(Transaction.transaction_date.asc())
+            ).all()
+        else:
+            # Récupérer les transactions de versements / retraits sur tous les comptes d'investissement
+            tx_rows = session.exec(
+                select(Transaction, Account)
+                .join(Account, Transaction.account_id == Account.id)
+                .where(Transaction.type.in_([TransactionType.DEPOSIT, TransactionType.WITHDRAWAL]))
+                .where(Account.account_type.in_(INVESTMENT_ACCOUNT_TYPES))
+                .order_by(Transaction.transaction_date.asc())
+            ).all()
 
         txs = [r[0] for r in tx_rows]
-
-
         cash_flows: List[Tuple[date, float]] = []
 
         total_dep = sum(t.amount_eur for t in txs if t.type == TransactionType.DEPOSIT)
         total_with = sum(t.amount_eur for t in txs if t.type == TransactionType.WITHDRAWAL)
         net_deposits = total_dep - total_with
 
-        # Réconciliation du capital initial antérieur au journal
-        untracked_capital = max(0.0, current_invested - net_deposits)
-        earliest_date = txs[0].transaction_date if txs else (today - timedelta(days=60))
+        # S'il n'y a pas de dépôts explicites pour ce compte (ex: PEA avec avis d'opérés d'achats purs),
+        # utiliser les dates des ordres d'achat comme dates d'apport en capital
+        if not txs and account_id is not None:
+            buy_txs = session.exec(
+                select(Transaction)
+                .where(Transaction.account_id == account_id)
+                .where(Transaction.type == TransactionType.BUY)
+                .order_by(Transaction.transaction_date.asc())
+            ).all()
+            if buy_txs:
+                total_bought = sum(b.amount_eur for b in buy_txs)
+                cash_remain = max(0.0, current_invested - total_bought)
+                earliest = buy_txs[0].transaction_date
+                if cash_remain > 0:
+                    cash_flows.append((earliest, -cash_remain))
+                for b in buy_txs:
+                    cash_flows.append((b.transaction_date, -abs(b.amount_eur)))
 
-        if untracked_capital > 0:
-            cash_flows.append((earliest_date, -untracked_capital))
+        if not cash_flows:
+            # Réconciliation du capital initial antérieur au journal
+            untracked_capital = max(0.0, current_invested - net_deposits)
+            earliest_date = txs[0].transaction_date if txs else (today - timedelta(days=60))
 
-        for t in txs:
-            if t.type == TransactionType.DEPOSIT:
-                cash_flows.append((t.transaction_date, -abs(t.amount_eur)))
-            elif t.type == TransactionType.WITHDRAWAL:
-                cash_flows.append((t.transaction_date, abs(t.amount_eur)))
+            if untracked_capital > 0:
+                cash_flows.append((earliest_date, -untracked_capital))
+
+            for t in txs:
+                if t.type == TransactionType.DEPOSIT:
+                    cash_flows.append((t.transaction_date, -abs(t.amount_eur)))
+                elif t.type == TransactionType.WITHDRAWAL:
+                    cash_flows.append((t.transaction_date, abs(t.amount_eur)))
 
         # Point final : valeur de liquidation aujourd'hui
         if current_net_worth > 0:
@@ -265,21 +295,162 @@ class PerformanceService:
                 "days": days,
             }
 
+    # ────────────────────── Analyse des Dividendes ──────────────────────
+
+    @staticmethod
+    def get_dividend_analytics(session: Session) -> Dict[str, Any]:
+        """Analyse complète des dividendes perçus (par mois, année et actif)."""
+        div_txs = session.exec(
+            select(Transaction)
+            .where(Transaction.type == TransactionType.DIVIDEND)
+            .order_by(Transaction.transaction_date.asc())
+        ).all()
+
+        total_eur = 0.0
+        by_year: Dict[str, float] = {}
+        by_month: Dict[str, Dict[str, Any]] = {}
+        by_asset: Dict[str, Dict[str, Any]] = {}
+
+        MONTH_NAMES_FR = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Août", "Sep", "Oct", "Nov", "Déc"]
+
+        for t in div_txs:
+            amt = round(t.amount_eur or 0.0, 2)
+            total_eur += amt
+            d = t.transaction_date
+            y_str = str(d.year)
+            ym = f"{d.year}-{d.month:02d}"
+
+            by_year[y_str] = round(by_year.get(y_str, 0.0) + amt, 2)
+
+            if ym not in by_month:
+                m_label = f"{MONTH_NAMES_FR[d.month - 1]} {d.year}"
+                by_month[ym] = {
+                    "period": ym,
+                    "year": d.year,
+                    "month": d.month,
+                    "label": m_label,
+                    "amount_eur": 0.0,
+                    "count": 0,
+                }
+            by_month[ym]["amount_eur"] = round(by_month[ym]["amount_eur"] + amt, 2)
+            by_month[ym]["count"] += 1
+
+            sym = t.symbol or "AUTRE"
+            if sym not in by_asset:
+                by_asset[sym] = {
+                    "symbol": sym,
+                    "name": t.name or sym,
+                    "total_eur": 0.0,
+                    "count": 0,
+                    "last_date": d.isoformat(),
+                }
+            by_asset[sym]["total_eur"] = round(by_asset[sym]["total_eur"] + amt, 2)
+            by_asset[sym]["count"] += 1
+            if d.isoformat() > by_asset[sym]["last_date"]:
+                by_asset[sym]["last_date"] = d.isoformat()
+
+        monthly_series = sorted(by_month.values(), key=lambda x: x["period"])
+        assets_ranked = sorted(by_asset.values(), key=lambda x: x["total_eur"], reverse=True)
+
+        return {
+            "total_eur": round(total_eur, 2),
+            "operations_count": len(div_txs),
+            "by_year": by_year,
+            "monthly_series": monthly_series,
+            "assets_ranked": assets_ranked,
+        }
+
+    # ────────────────────── Ventilation de Performance par Compte ──────────────────────
+
+    @classmethod
+    def get_performance_by_account(
+        cls, session: Session, accounts: List[Account], holdings_by_acc: Dict[int, List[Dict[str, Any]]]
+    ) -> List[Dict[str, Any]]:
+        """Calcule la rentabilité financière détaillée pour chaque enveloppe d'investissement."""
+        from app.services.market_service import market_service
+        results = []
+
+        for acc in accounts:
+            if acc.account_type not in INVESTMENT_ACCOUNT_TYPES:
+                continue
+
+            acc_cash_eur = acc.cash_balance * market_service.get_eur_rate(acc.currency)
+            acc_holdings = holdings_by_acc.get(acc.id, [])
+            acc_holdings_val = sum(h["total_value_eur"] for h in acc_holdings)
+            acc_invested_val = sum(h["total_invested_eur"] for h in acc_holdings)
+
+            acc_net_worth = acc_cash_eur + acc_holdings_val
+            acc_total_invested = acc_cash_eur + acc_invested_val
+
+            acc_gain_eur = acc_net_worth - acc_total_invested
+            acc_gain_pct = ((acc_gain_eur / acc_total_invested) * 100) if acc_total_invested > 0 else 0.0
+
+            mwr_data = cls.calculate_mwr(session, acc_net_worth, acc_total_invested, account_id=acc.id)
+
+            divs = session.exec(
+                select(Transaction)
+                .where(Transaction.account_id == acc.id)
+                .where(Transaction.type == TransactionType.DIVIDEND)
+            ).all()
+            div_sum = sum(d.amount_eur or 0.0 for d in divs)
+
+            sells = session.exec(
+                select(Transaction)
+                .where(Transaction.account_id == acc.id)
+                .where(Transaction.type == TransactionType.SELL)
+            ).all()
+            realized_sum = sum(s.realized_gain_eur or 0.0 for s in sells)
+
+            active_h = [h for h in acc_holdings if h.get("quantity", 0) > 0]
+            closed_h = [h for h in acc_holdings if h.get("quantity", 0) <= 0]
+
+            results.append({
+                "account_id": acc.id,
+                "name": acc.name,
+                "institution": acc.institution,
+                "account_type": acc.account_type.value,
+                "color": acc.color or "#3B82F6",
+                "net_worth_eur": round(acc_net_worth, 2),
+                "invested_eur": round(acc_total_invested, 2),
+                "gain_eur": round(acc_gain_eur, 2),
+                "gain_percent": round(acc_gain_pct, 2),
+                "mwr": mwr_data,
+                "dividends_eur": round(div_sum, 2),
+                "dividends_count": len(divs),
+                "realized_gain_eur": round(realized_sum, 2),
+                "active_holdings_count": len(active_h),
+                "closed_holdings_count": len(closed_h),
+            })
+
+        return sorted(results, key=lambda x: x["net_worth_eur"], reverse=True)
+
     # ────────────────────── Synthèse Globale ──────────────────────
 
     @classmethod
     def get_full_performance_metrics(
-        cls, session: Session, total_net_worth: float, total_invested: float
+        cls,
+        session: Session,
+        total_net_worth: float,
+        total_invested: float,
+        accounts: Optional[List[Account]] = None,
+        holdings_by_acc: Optional[Dict[int, List[Dict[str, Any]]]] = None,
     ) -> Dict[str, Any]:
-        """Retourne l'ensemble des KPIs de performance réelle (TWR, MWR, dividendes, plus-values)."""
+        """Retourne l'ensemble des KPIs de performance réelle (TWR, MWR, dividendes, plus-values, ventilation par compte et analytics dividendes)."""
         stats = transaction_service.get_transaction_stats(session)
         twr_data = cls.calculate_twr(session, total_net_worth, total_invested)
         mwr_data = cls.calculate_mwr(session, total_net_worth, total_invested)
+        dividend_analytics = cls.get_dividend_analytics(session)
+
+        by_account = []
+        if accounts and holdings_by_acc is not None:
+            by_account = cls.get_performance_by_account(session, accounts, holdings_by_acc)
 
         return {
             "twr": twr_data,
             "mwr": mwr_data,
             "stats": stats,
+            "dividend_analytics": dividend_analytics,
+            "by_account": by_account,
         }
 
 

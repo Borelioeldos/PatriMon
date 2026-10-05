@@ -2,10 +2,10 @@
 from typing import List, Dict, Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlmodel import Session, select
+from sqlmodel import Session, select, or_
 
 from app.database import get_session
-from app.models import Holding, HoldingCreate, HoldingUpdate, Account, AssetClass
+from app.models import Holding, HoldingCreate, HoldingUpdate, Account, AssetClass, Transaction, TransactionType
 from app.services.portfolio_service import PortfolioService
 from app.services.market_service import market_service
 
@@ -155,3 +155,107 @@ def delete_holding(holding_id: int, session: Session = Depends(get_session)):
     session.delete(holding)
     session.commit()
     return {"message": "Position supprimée avec succès (historique des transactions préservé)"}
+
+
+@router.get("/{holding_id}/detail", response_model=Dict[str, Any])
+def get_holding_detail(
+    holding_id: int,
+    session: Session = Depends(get_session),
+):
+    """Retourne la fiche d'identité détaillée d'un actif : cotation live, compte parent, historique de ses ordres/dividendes et métriques financières."""
+    holding = session.get(Holding, holding_id)
+    if not holding:
+        raise HTTPException(status_code=404, detail="Position introuvable")
+
+    account = session.get(Account, holding.account_id)
+    enriched = PortfolioService.enrich_holding(holding)
+
+    # Récupération des transactions associées (par holding_id direct ou par symbole sur ce compte)
+    conditions = [Transaction.holding_id == holding_id]
+    if holding.symbol:
+        conditions.append(
+            (Transaction.account_id == holding.account_id) & (Transaction.symbol == holding.symbol)
+        )
+
+    txs = session.exec(
+        select(Transaction)
+        .where(or_(*conditions))
+        .order_by(Transaction.transaction_date.desc(), Transaction.id.desc())
+    ).all()
+
+    # Synthèse financière de la position
+    total_buys_count = 0
+    total_sells_count = 0
+    total_dividends_count = 0
+    total_dividends_eur = 0.0
+    total_bought_eur = 0.0
+    total_sold_eur = 0.0
+    realized_gain_eur = 0.0
+
+    tx_list = []
+    for t in txs:
+        t_dict = {
+            "id": t.id,
+            "type": t.type.value if hasattr(t.type, "value") else str(t.type),
+            "transaction_date": t.transaction_date.isoformat(),
+            "symbol": t.symbol,
+            "name": t.name,
+            "quantity": t.quantity,
+            "unit_price": t.unit_price,
+            "unit_price_eur": t.unit_price_eur,
+            "amount": t.amount,
+            "amount_eur": t.amount_eur,
+            "fees_eur": t.fees_eur,
+            "currency": t.currency,
+            "realized_gain_eur": t.realized_gain_eur,
+            "notes": t.notes,
+        }
+        tx_list.append(t_dict)
+
+        if t.type == TransactionType.BUY:
+            total_buys_count += 1
+            total_bought_eur += (t.amount_eur or 0.0)
+        elif t.type == TransactionType.SELL:
+            total_sells_count += 1
+            total_sold_eur += (t.amount_eur or 0.0)
+            realized_gain_eur += (t.realized_gain_eur or 0.0)
+        elif t.type == TransactionType.DIVIDEND:
+            total_dividends_count += 1
+            total_dividends_eur += (t.amount_eur or 0.0)
+
+    # Yield on Cost (Dividendes cumulés rapportés au coût d'achat résiduel ou investi)
+    cost_basis = enriched["total_invested_eur"]
+    yield_on_cost = (
+        round((total_dividends_eur / cost_basis) * 100, 2)
+        if cost_basis > 0 and total_dividends_eur > 0
+        else 0.0
+    )
+
+    unrealized_gain_eur = enriched["gain_eur"]
+    total_return_eur = round(unrealized_gain_eur + realized_gain_eur + total_dividends_eur, 2)
+
+    return {
+        "holding": enriched,
+        "account": {
+            "id": account.id if account else None,
+            "name": account.name if account else "Inconnu",
+            "institution": account.institution if account else None,
+            "account_type": account.account_type.value if account else None,
+            "currency": account.currency if account else "EUR",
+            "color": account.color if account else "#3B82F6",
+        },
+        "stats": {
+            "total_buys_count": total_buys_count,
+            "total_sells_count": total_sells_count,
+            "total_dividends_count": total_dividends_count,
+            "total_dividends_eur": round(total_dividends_eur, 2),
+            "total_bought_eur": round(total_bought_eur, 2),
+            "total_sold_eur": round(total_sold_eur, 2),
+            "realized_gain_eur": round(realized_gain_eur, 2),
+            "unrealized_gain_eur": round(unrealized_gain_eur, 2),
+            "unrealized_gain_percent": enriched["gain_percent"],
+            "total_return_eur": total_return_eur,
+            "yield_on_cost": yield_on_cost,
+        },
+        "transactions": tx_list,
+    }

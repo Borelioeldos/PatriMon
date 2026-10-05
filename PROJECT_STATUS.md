@@ -46,8 +46,8 @@ Suivie_Patrimoine/
 │   │       ├── pee_import_service.py# Phase 3 : Parseur PDF officiel BNP EE (Schneider Electric) & CSV
 │   │       ├── open_banking_service.py# Phase 3 : Client API Enable Banking DSP2 (JWT RS256) + auto-création comptes
 │   │       ├── google_drive_service.py# Phase 3 : Client Google Drive API v3 (OAuth auto-refresh, stream mémoire, md5Checksum)
-│   │       ├── bourso_trade_parser.py # Phase 3 : Parseur avis d'opérés Boursorama PEA (ordres, PRU, dédoublonnage)
-│   │       ├── bourso_statement_parser.py # Phase 3 : Parseur relevé de titres mensuel Boursorama PEA (cash + ETF)
+│   │       ├── bourso_trade_parser.py # Phase 3 : Parseur avis d'opérés BoursoBank PEA (ordres, PRU, dédoublonnage)
+│   │       ├── bourso_statement_parser.py # Phase 3 : Parseur relevé de titres mensuel BoursoBank PEA (cash + ETF)
 │   │       └── revolut_csv_parser.py  # Phase 3 : Parseur multi-CSV Revolut (CTO, PnL, Crypto BTC, dividendes 57,18 €)
 │   ├── certs/                       # Phase 3 : Paires de clés RSA 2048 statiques permanentes (.pem)
 │   ├── open_banking_config.json     # Configuration locale sécurisée (Application ID, clés statiques)
@@ -166,19 +166,32 @@ Suivie_Patrimoine/
     - Connexion directe à l'API Google Drive v3 via OAuth avec rafraîchissement automatique de jeton d'accès sans dépendance sur un disque local.
     - Exploration récursive du dossier officiel Document_perso > Bourse (1nA7R5KYPgqV6Y6PwvysZDp4B3A3-urmQ).
     - Dédoublonnage strict par empreinte md5Checksum et historique stocké dans la table SQLite DriveSyncLog.
-  - **Moteur Boursorama PEA (bourso_trade_parser.py & bourso_statement_parser.py)** :
+  - **Moteur BoursoBank PEA (bourso_trade_parser.py & bourso_statement_parser.py)** :
     - Ingestion de **18 avis d'opérés réels** d'ETF (*Amundi Emerging ESG, BNP S&P 500, iShares MSCI World, Euro Stoxx 50*).
     - Extraction automatique des cours d'exécution, quantités, frais de courtage, dates et dédoublonnage par référence d'ordre unique (external_id = bourso_trade_...).
     - Recalcul dynamique du PRU pondéré et mise à jour du solde espèces PEA (**85,80 €**) et des positions via le relevé mensuel.
   - **Moteur Multi-CSV Revolut CTO & Crypto (revolut_csv_parser.py)** :
     - Détection et parsing automatique des 4 exports (trading-account-statement, trading-pnl-statement, crypto-account-statement, consolidated-statement).
     - Gestion fine des ordres d'actions US et européennes avec conversion dynamique des devises via FX Rate.
-    - **Dividendes Encaissés (57,18 €)** : Ingestion et consolidation des 25 opérations de dividendes perçus (Apple, Nvidia, BMW, Stellantis, Siemens, Volkswagen, TSMC, iShares S&P 500) avec catégorisation en Revenus de capitaux.
+    - **Dividendes Encaissés (57,18 €)** : Ingestion et consolidation des 25 opérations de dividendes perçus (Apple, Nvidia, LVMH, Stellantis, Siemens, Volkswagen, TSMC, iShares S&P 500) avec catégorisation en Revenus de capitaux.
     - **Cryptomonnaies (Bitcoin BTC-EUR)** : Ingestion des 10 ordres d'achat réels avec parsing insensible aux séparateurs de milliers (ex: €93,126.88), normalisation des dates avec espaces insécables unicode (\u202f), PRU pondéré exact (**78 721,87 €**), capital investi réel (**1 408,57 €**), cotation live Yahoo Finance (BTC-EUR) et calcul de performance mathématiquement exact (**-3,67% / -51,76 €**).
-  - **Interface React Dédiée (DriveSyncModal.jsx & Navbar.jsx)** :
-    - Bouton « Google Drive » dans le header avec badge cloud temps réel.
-    - Modal d'état listant les 24 fichiers cloud répartis par établissement (*Bourso*, *Revolut*, *BNP*).
-    - Déclencheur 1-clic « Synchroniser depuis Google Drive » avec synthèse immédiate des opérations et historique complet.
+- [x] **Améliorations Lot B & Expérience Utilisateur** :
+  - **Saisie assistée d'ordres & Presets** : Autocomplétion intelligente par ticker, conversion instantanée cours/devises, presets de dépenses récurrentes (Salaires, Prélèvements, Versements programmés).
+  - **Unification de marque BoursoBank** : Harmonisation complète sur la dénomination officielle "BoursoBank" (éliminant toute confusion avec l'ancien nom Boursorama).
+  - **Précision financière BMW (WKN 853292)** : Résolution dynamique sur `BMW.DE` avec calcul validé des plus-values latentes et du PRU pondéré.
+  - **Modal d'inspection détaillée d'actif (AssetDetailModal.jsx)** : Consultation en 1 clic de la fiche complète de chaque position (performance, poids, valeur actuelle, historique).
+
+- [x] **Refonte Graphique "Quiet Luxury / High-End Fintech" & Ergonomie** :
+  - **Typographie de prestige** : Adoption de `Plus Jakarta Sans` pour les interfaces et `JetBrains Mono` pour les données financières chiffrées tabulaires.
+  - **Floating Glass Island Header (Navbar.jsx)** :
+    - Élimination des éléments anxiogènes (badge "LIVE FEED", pastille verte clignotante, sous-titres techniques à décompte perpétuel).
+    - Identité visuelle épurée avec emblème d'ascension patrimoniale et typographie contrastée.
+    - Décompte d'actualisation élégamment logé dans le bouton auto-refresh (ex: `14s`, `30s`), date et heure dans l'infobulle.
+  - **Grille de KPI Rééquilibrée (KPICards.jsx)** :
+    - Suppression des doubles cadres concentriques ("Doppelrand") et des textes monospace criards.
+    - 4 cartes indépendantes et homogènes : *Patrimoine Net Total*, *Investissements (Bourse & PEE)* avec TRI, *Trésorerie & Épargne* avec ratio de sécurité, et *Dividendes perçus* avec compteur d'opérations.
+  - **Mode Confidentialité Instantané** : Touche clavier `P` ou bouton "Discret" pour flouter l'ensemble des chiffres sensibles lors de consultations en public.
+  - **Validation & Zéro Régression** : 8/8 tests unitaires financiers passants, build Vite (`npm run build`) validé à 100%.
 
 ---
 
