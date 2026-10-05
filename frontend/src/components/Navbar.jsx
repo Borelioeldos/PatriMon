@@ -3,7 +3,7 @@ import {
   RefreshCw, Plus, Wallet, TrendingUp, Radio, 
   Landmark, Building2, Cloud, ChevronDown, Check,
   SlidersHorizontal, ArrowLeftRight, Layers, Eye, EyeOff,
-  Sparkles, ShieldCheck
+  Sparkles, ShieldCheck, Sun, Moon
 } from 'lucide-react';
 
 export default function Navbar({ 
@@ -22,7 +22,9 @@ export default function Navbar({
   activeView = 'overview',
   onSelectView,
   privacyMode = false,
-  onTogglePrivacyMode
+  onTogglePrivacyMode,
+  theme = 'dark',
+  onToggleTheme
 }) {
   const [isActionsOpen, setIsActionsOpen] = useState(false);
 
@@ -36,7 +38,7 @@ export default function Navbar({
   return (
     <header className="sticky top-0 z-40 px-3 sm:px-6 pt-3 pb-2 transition-all">
       {/* Floating Island Navigation Enclosure */}
-      <div className="max-w-7xl mx-auto bg-[#090E1A]/85 backdrop-blur-2xl border border-white/[0.08] shadow-[0_16px_45px_-10px_rgba(0,0,0,0.7)] rounded-2xl px-3.5 sm:px-5 py-2.5 flex flex-col md:flex-row md:items-center justify-between gap-3">
+      <div className="max-w-7xl mx-auto bg-white/85 dark:bg-[#090E1A]/85 backdrop-blur-2xl border border-slate-200/80 dark:border-white/[0.08] shadow-[0_10px_35px_-5px_rgba(0,0,0,0.06)] dark:shadow-[0_16px_45px_-10px_rgba(0,0,0,0.7)] rounded-2xl px-3.5 sm:px-5 py-2.5 flex flex-col md:flex-row md:items-center justify-between gap-3 transition-colors duration-200">
         
         {/* Brand identity (Épuré & Haute Précision) */}
         <div className="flex items-center justify-between">
@@ -49,7 +51,7 @@ export default function Navbar({
               <TrendingUp className="w-4 h-4 stroke-[2.5]" />
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="font-bold text-base tracking-tight text-white group-hover:text-blue-200 transition-colors">
+              <span className="font-bold text-base tracking-tight text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-200 transition-colors">
                 PatriMon
               </span>
             </div>
@@ -57,26 +59,35 @@ export default function Navbar({
 
           {/* Mobile view quick toggles */}
           <div className="flex md:hidden items-center gap-1.5">
+            {onToggleTheme && (
+              <button
+                onClick={onToggleTheme}
+                className="p-2 rounded-xl border border-slate-200 dark:border-white/[0.08] bg-slate-100/80 dark:bg-white/[0.03] text-amber-500 dark:text-amber-400 btn-haptic"
+                title={theme === 'dark' ? "Mode clair" : "Mode sombre"}
+              >
+                {theme === 'dark' ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5 text-slate-700" />}
+              </button>
+            )}
             {onTogglePrivacyMode && (
               <button
                 onClick={onTogglePrivacyMode}
                 className={`p-2 rounded-xl border text-xs transition-all btn-haptic ${
                   privacyMode 
-                    ? 'bg-purple-500/20 border-purple-500/40 text-purple-300' 
-                    : 'bg-white/[0.03] border-white/[0.08] text-slate-400'
+                    ? 'bg-purple-500/20 border-purple-500/40 text-purple-600 dark:text-purple-300' 
+                    : 'bg-slate-100/80 dark:bg-white/[0.03] border-slate-200 dark:border-white/[0.08] text-slate-600 dark:text-slate-400'
                 }`}
                 title="Mode Confidentialité"
               >
-                {privacyMode ? <EyeOff className="w-3.5 h-3.5 text-purple-400" /> : <Eye className="w-3.5 h-3.5" />}
+                {privacyMode ? <EyeOff className="w-3.5 h-3.5 text-purple-500 dark:text-purple-400" /> : <Eye className="w-3.5 h-3.5" />}
               </button>
             )}
             <button
               onClick={onRefresh}
               disabled={isRefreshing}
-              className="p-2 rounded-xl bg-white/[0.03] border border-white/[0.08] text-slate-300 hover:text-white btn-haptic"
+              className="p-2 rounded-xl bg-slate-100/80 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white btn-haptic"
               title="Rafraîchir"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-blue-400' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-blue-500 dark:text-blue-400' : ''}`} />
             </button>
             <button
               onClick={onOpenAddTransaction}
@@ -90,7 +101,7 @@ export default function Navbar({
 
         {/* Perspective navigation switcher (Pills with physical feel) */}
         {onSelectView && (
-          <nav className="flex items-center gap-1 bg-[#060A14]/70 p-1 rounded-xl border border-white/[0.05] overflow-x-auto no-scrollbar shadow-[inset_0_1px_2px_rgba(0,0,0,0.5)]">
+          <nav className="flex items-center gap-1 bg-slate-100/90 dark:bg-[#060A14]/70 p-1 rounded-xl border border-slate-200/80 dark:border-white/[0.05] overflow-x-auto no-scrollbar shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.5)] transition-colors">
             {views.map((v) => {
               const isActive = activeView === v.id;
               return (
@@ -99,8 +110,8 @@ export default function Navbar({
                   onClick={() => onSelectView(v.id)}
                   className={`px-3 py-1.5 rounded-lg text-xs tracking-tight whitespace-nowrap transition-all duration-200 ${
                     isActive 
-                      ? 'bg-gradient-to-b from-[#1E293B] to-[#121826] text-white border border-white/[0.12] shadow-[0_2px_8px_rgba(0,0,0,0.3)] font-semibold' 
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.03]'
+                      ? 'bg-white dark:bg-gradient-to-b dark:from-[#1E293B] dark:to-[#121826] text-slate-900 dark:text-white border border-slate-200/90 dark:border-white/[0.12] shadow-sm font-semibold' 
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-white/[0.03]'
                   }`}
                 >
                   {v.label}
@@ -112,18 +123,32 @@ export default function Navbar({
 
         {/* Desktop command bar & quick actions */}
         <div className="hidden md:flex items-center gap-2">
+          {/* Toggle Theme (Mode Sombre / Mode Clair) */}
+          {onToggleTheme && (
+            <button
+              onClick={onToggleTheme}
+              className="px-2.5 py-1.5 rounded-xl border border-slate-200/80 dark:border-white/[0.08] bg-slate-100/80 hover:bg-slate-200/80 dark:bg-white/[0.03] dark:hover:bg-white/[0.07] text-amber-500 dark:text-amber-400 transition-all btn-haptic flex items-center gap-1.5"
+              title={theme === 'dark' ? "Passer en mode clair" : "Passer en mode sombre"}
+            >
+              {theme === 'dark' ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5 text-slate-700" />}
+              <span className="text-xs font-medium text-slate-700 dark:text-slate-300 hidden xl:inline">
+                {theme === 'dark' ? 'Clair' : 'Sombre'}
+              </span>
+            </button>
+          )}
+
           {/* Toggle Privacy Mode */}
           {onTogglePrivacyMode && (
             <button
               onClick={onTogglePrivacyMode}
               className={`px-2.5 py-1.5 rounded-xl border text-xs font-medium transition-all btn-haptic flex items-center gap-1.5 ${
                 privacyMode 
-                  ? 'bg-purple-500/15 border-purple-500/35 text-purple-300 shadow-[0_0_20px_rgba(168,85,247,0.2)]' 
-                  : 'bg-white/[0.03] border-white/[0.08] text-slate-400 hover:text-slate-200 hover:bg-white/[0.06]'
+                  ? 'bg-purple-500/15 border-purple-500/35 text-purple-700 dark:text-purple-300 shadow-[0_0_20px_rgba(168,85,247,0.15)]' 
+                  : 'bg-slate-100/80 hover:bg-slate-200/80 border-slate-200/80 text-slate-600 dark:bg-white/[0.03] dark:hover:bg-white/[0.06] dark:border-white/[0.08] dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
               title="Mode Confidentialité (Flouter les montants - Raccourci 'P')"
             >
-              {privacyMode ? <EyeOff className="w-3.5 h-3.5 text-purple-400" /> : <Eye className="w-3.5 h-3.5 text-slate-400" />}
+              {privacyMode ? <EyeOff className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" /> : <Eye className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />}
               <span className="hidden xl:inline">{privacyMode ? 'Discret' : 'Public'}</span>
             </button>
           )}
@@ -133,12 +158,12 @@ export default function Navbar({
             onClick={onToggleAutoRefresh}
             className={`px-2.5 py-1.5 rounded-xl border text-xs font-medium transition-all btn-haptic flex items-center gap-1.5 ${
               autoRefresh 
-                ? 'bg-blue-500/10 border-blue-500/30 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.15)]' 
-                : 'bg-white/[0.03] border-white/[0.08] text-slate-500 hover:text-slate-300 hover:bg-white/[0.06]'
+                ? 'bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.1)]' 
+                : 'bg-slate-100/80 hover:bg-slate-200/80 border-slate-200/80 text-slate-500 dark:bg-white/[0.03] dark:border-white/[0.08] dark:text-slate-500 dark:hover:text-slate-300'
             }`}
             title={`Actualisation automatique (30s)${lastUpdated ? ` • Dernière cotation : ${lastUpdated}` : ''}`}
           >
-            <Radio className={`w-3 h-3 ${autoRefresh ? 'animate-pulse text-blue-400' : ''}`} />
+            <Radio className={`w-3 h-3 ${autoRefresh ? 'animate-pulse text-blue-600 dark:text-blue-400' : ''}`} />
             <span>{autoRefresh ? `${countdown}s` : '30s'}</span>
           </button>
 
@@ -146,10 +171,10 @@ export default function Navbar({
           <button
             onClick={onRefresh}
             disabled={isRefreshing}
-            className="px-2.5 py-1.5 rounded-xl bg-white/[0.03] hover:bg-white/[0.07] text-slate-300 hover:text-white border border-white/[0.08] text-xs font-medium transition-all btn-haptic flex items-center gap-1.5 disabled:opacity-50"
+            className="px-2.5 py-1.5 rounded-xl bg-slate-100/80 hover:bg-slate-200/80 dark:bg-white/[0.03] dark:hover:bg-white/[0.07] text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white border border-slate-200/80 dark:border-white/[0.08] text-xs font-medium transition-all btn-haptic flex items-center gap-1.5 disabled:opacity-50"
             title={`Rafraîchir les cotations maintenant${lastUpdated ? ` (Dernière MàJ : ${lastUpdated})` : ''}`}
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-blue-400' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-blue-600 dark:text-blue-400' : ''}`} />
             <span className="hidden lg:inline">{isRefreshing ? 'Calcul...' : 'Marché'}</span>
           </button>
 
@@ -157,11 +182,11 @@ export default function Navbar({
           <div className="relative">
             <button
               onClick={() => setIsActionsOpen(!isActionsOpen)}
-              className="px-2.5 py-1.5 rounded-xl bg-white/[0.03] hover:bg-white/[0.07] text-slate-300 hover:text-white border border-white/[0.08] text-xs font-medium transition-all btn-haptic flex items-center gap-1.5"
+              className="px-2.5 py-1.5 rounded-xl bg-slate-100/80 hover:bg-slate-200/80 dark:bg-white/[0.03] dark:hover:bg-white/[0.07] text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white border border-slate-200/80 dark:border-white/[0.08] text-xs font-medium transition-all btn-haptic flex items-center gap-1.5"
             >
-              <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400" />
+              <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
               <span>Outils</span>
-              <ChevronDown className="w-3 h-3 text-slate-500" />
+              <ChevronDown className="w-3 h-3 text-slate-400 dark:text-slate-500" />
             </button>
 
             {isActionsOpen && (
@@ -170,45 +195,45 @@ export default function Navbar({
                   className="fixed inset-0 z-40" 
                   onClick={() => setIsActionsOpen(false)}
                 />
-                <div className="absolute right-0 mt-2 w-60 bg-[#0E1524] border border-white/[0.1] rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-2 z-50 space-y-1 animate-fadeIn">
+                <div className="absolute right-0 mt-2 w-60 bg-white dark:bg-[#0E1524] border border-slate-200 dark:border-white/[0.1] rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-2 z-50 space-y-1 animate-fadeIn">
                   <div className="text-[10px] font-mono uppercase tracking-wider text-slate-400 px-2.5 py-1">
                     Connecteurs bancaires
                   </div>
                   
                   <button
                     onClick={() => { setIsActionsOpen(false); onOpenBankSync(); }}
-                    className="w-full px-2.5 py-2 rounded-xl text-left text-xs text-slate-300 hover:text-white hover:bg-white/[0.06] flex items-center gap-2.5 transition-colors"
+                    className="w-full px-2.5 py-2 rounded-xl text-left text-xs text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.06] flex items-center gap-2.5 transition-colors"
                   >
-                    <Landmark className="w-4 h-4 text-cyan-400" />
+                    <Landmark className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
                     <div>
                       <div className="font-medium">Synchro DSP2</div>
-                      <div className="text-[10px] text-slate-400">BoursoBank, Revolut, BNP</div>
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400">BoursoBank, Revolut, BNP</div>
                     </div>
                   </button>
 
                   <button
                     onClick={() => { setIsActionsOpen(false); onOpenPeeImport(); }}
-                    className="w-full px-2.5 py-2 rounded-xl text-left text-xs text-slate-300 hover:text-white hover:bg-white/[0.06] flex items-center gap-2.5 transition-colors"
+                    className="w-full px-2.5 py-2 rounded-xl text-left text-xs text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.06] flex items-center gap-2.5 transition-colors"
                   >
-                    <Building2 className="w-4 h-4 text-amber-400" />
+                    <Building2 className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                     <div>
                       <div className="font-medium">Relevé BNP PEE / PERO</div>
-                      <div className="text-[10px] text-slate-400">Import PDF ou CSV d'avoirs</div>
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400">Import PDF ou CSV d'avoirs</div>
                     </div>
                   </button>
 
                   <button
                     onClick={() => { setIsActionsOpen(false); onOpenDriveSync(); }}
-                    className="w-full px-2.5 py-2 rounded-xl text-left text-xs text-slate-300 hover:text-white hover:bg-white/[0.06] flex items-center gap-2.5 transition-colors"
+                    className="w-full px-2.5 py-2 rounded-xl text-left text-xs text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.06] flex items-center gap-2.5 transition-colors"
                   >
-                    <Cloud className="w-4 h-4 text-blue-400" />
+                    <Cloud className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                     <div>
                       <div className="font-medium">Google Drive Bourse</div>
-                      <div className="text-[10px] text-slate-400">Historique ordres exportés</div>
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400">Historique ordres exportés</div>
                     </div>
                   </button>
 
-                  <div className="border-t border-white/[0.06] my-1 pt-1" />
+                  <div className="border-t border-slate-200 dark:border-white/[0.06] my-1 pt-1" />
 
                   <div className="text-[10px] font-mono uppercase tracking-wider text-slate-400 px-2.5 py-1">
                     Création manuelle
@@ -216,17 +241,17 @@ export default function Navbar({
 
                   <button
                     onClick={() => { setIsActionsOpen(false); onOpenAddAccount(); }}
-                    className="w-full px-2.5 py-1.5 rounded-xl text-left text-xs text-slate-300 hover:text-white hover:bg-white/[0.06] flex items-center gap-2 transition-colors"
+                    className="w-full px-2.5 py-1.5 rounded-xl text-left text-xs text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.06] flex items-center gap-2 transition-colors"
                   >
-                    <Wallet className="w-3.5 h-3.5 text-indigo-400" />
+                    <Wallet className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                     <span>Nouveau compte / livret</span>
                   </button>
 
                   <button
                     onClick={() => { setIsActionsOpen(false); onOpenAddAsset(); }}
-                    className="w-full px-2.5 py-1.5 rounded-xl text-left text-xs text-slate-300 hover:text-white hover:bg-white/[0.06] flex items-center gap-2 transition-colors"
+                    className="w-full px-2.5 py-1.5 rounded-xl text-left text-xs text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.06] flex items-center gap-2 transition-colors"
                   >
-                    <Plus className="w-3.5 h-3.5 text-blue-400" />
+                    <Plus className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                     <span>Nouvelle position financière</span>
                   </button>
                 </div>

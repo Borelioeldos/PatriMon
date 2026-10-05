@@ -31,6 +31,35 @@ export default function App() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [countdown, setCountdown] = useState(REFRESH_INTERVAL_SECONDS);
 
+  // Mode Sombre / Mode Clair
+  const [theme, setTheme] = useState(() => {
+    try {
+      const saved = localStorage.getItem('patrimon_theme');
+      if (saved) return saved;
+      return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    } catch (_) {
+      return 'dark';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('patrimon_theme', theme);
+    } catch (_) {}
+    const root = document.documentElement;
+    if (theme === 'dark') {
+      root.classList.add('dark');
+      root.classList.remove('light');
+    } else {
+      root.classList.remove('dark');
+      root.classList.add('light');
+    }
+  }, [theme]);
+
+  const handleToggleTheme = useCallback(() => {
+    setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+  }, []);
+
   // Mode Confidentialité (floutage en 1-clic des montants sensibles)
   const [privacyMode, setPrivacyMode] = useState(() => {
     try {
@@ -228,7 +257,7 @@ export default function App() {
   };
 
   return (
-    <div className={`min-h-screen bg-[#0B0F17] text-slate-100 flex flex-col font-sans selection:bg-blue-600 selection:text-white ${privacyMode ? 'privacy-active' : ''}`}>
+    <div className={`min-h-screen bg-[#F8FAFC] dark:bg-[#070A11] text-slate-900 dark:text-slate-100 flex flex-col font-sans selection:bg-blue-600 selection:text-white transition-colors duration-200 ${privacyMode ? 'privacy-active' : ''}`}>
       <Navbar
         onRefresh={handleRefresh}
         isRefreshing={isRefreshing}
@@ -246,6 +275,8 @@ export default function App() {
         onSelectView={setActiveView}
         privacyMode={privacyMode}
         onTogglePrivacyMode={handleTogglePrivacyMode}
+        theme={theme}
+        onToggleTheme={handleToggleTheme}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-5">
@@ -305,7 +336,7 @@ export default function App() {
                   <div className="space-y-5 animate-fadeIn">
                     <KPICards summary={summary} onOpenDividendsModal={() => setIsDividendsModalOpen(true)} />
                     <PerformanceMetrics summary={summary} onOpenDividendsModal={() => setIsDividendsModalOpen(true)} />
-                    <AllocationsCharts summary={summary} />
+                    <AllocationsCharts summary={summary} theme={theme} />
                     <AccountsList
                       accounts={summary.accounts}
                       onDeleteAccount={handleDeleteAccount}
@@ -355,7 +386,7 @@ export default function App() {
                   <div className="space-y-5 animate-fadeIn">
                     <KPICards summary={summary} onOpenDividendsModal={() => setIsDividendsModalOpen(true)} />
                     <PerformanceMetrics summary={summary} onOpenDividendsModal={() => setIsDividendsModalOpen(true)} />
-                    <AllocationsCharts summary={summary} />
+                    <AllocationsCharts summary={summary} theme={theme} />
                   </div>
                 )}
 

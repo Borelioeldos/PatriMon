@@ -4,20 +4,36 @@
 
 @layer base {
   :root {
-    color-scheme: dark;
+    color-scheme: dark light;
   }
 
   body {
-    background-color: #06090F;
-    color: #F1F5F9;
     font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11", "tnum";
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    transition: background-color 0.25s ease, color 0.25s ease;
+  }
+
+  /* Thème Sombre (OLED Obsidian & Radial Glows) */
+  html.dark body {
+    background-color: #070A11;
+    color: #F1F5F9;
     background-image: 
-      radial-gradient(circle at 50% -10%, rgba(37, 99, 235, 0.12) 0%, transparent 50%),
-      radial-gradient(circle at 90% 20%, rgba(16, 185, 129, 0.05) 0%, transparent 40%),
-      radial-gradient(circle at 10% 80%, rgba(139, 92, 246, 0.04) 0%, transparent 40%);
+      radial-gradient(circle at 50% -10%, rgba(37, 99, 235, 0.15) 0%, transparent 50%),
+      radial-gradient(circle at 90% 20%, rgba(16, 185, 129, 0.06) 0%, transparent 40%),
+      radial-gradient(circle at 10% 80%, rgba(139, 92, 246, 0.05) 0%, transparent 40%);
+    background-attachment: fixed;
+  }
+
+  /* Thème Clair (Porcelaine & Titanium Haute Définition) */
+  html:not(.dark) body {
+    background-color: #F8FAFC;
+    color: #0F172A;
+    background-image: 
+      radial-gradient(circle at 50% -10%, rgba(37, 99, 235, 0.07) 0%, transparent 55%),
+      radial-gradient(circle at 90% 20%, rgba(16, 185, 129, 0.04) 0%, transparent 45%),
+      radial-gradient(circle at 10% 80%, rgba(139, 92, 246, 0.03) 0%, transparent 45%);
     background-attachment: fixed;
   }
 
@@ -29,28 +45,35 @@
 
 /* Scrollbars personnalisées ultra-fines et ciselées */
 ::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 
-::-webkit-scrollbar-thumb {
-  background: #1C273C;
+html.dark ::-webkit-scrollbar-thumb {
+  background: #1E293B;
   border-radius: 9999px;
 }
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
 
-::-webkit-scrollbar-thumb:hover {
-  background: #2B3D5E;
+html:not(.dark) ::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 9999px;
+}
+html:not(.dark) ::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
 }
 
 /* Animations de présence & courbure Apple / Linear */
 @keyframes fadeIn {
   from { 
     opacity: 0; 
-    transform: translateY(6px); 
+    transform: translateY(8px); 
   }
   to { 
     opacity: 1; 
@@ -59,28 +82,81 @@
 }
 
 .animate-fadeIn {
-  animation: fadeIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: fadeIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-/* Architecture Double-Bezel (Doppelrand) pour conteneurs matériel de prestige */
-.double-bezel {
+/* Architecture Double-Bezel (Doppelrand) adaptée Dark & Light */
+html.dark .double-bezel {
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.07);
-  box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.7);
 }
 
-.double-bezel-inner {
+html.dark .double-bezel-inner {
   background: #0B101D;
   border: 1px solid rgba(255, 255, 255, 0.05);
   box-shadow: inset 0 1px 1px 0 rgba(255, 255, 255, 0.09);
 }
 
+html:not(.dark) .double-bezel {
+  background: rgba(0, 0, 0, 0.02);
+  border: 1px solid #E2E8F0;
+  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.04);
+}
+
+html:not(.dark) .double-bezel-inner {
+  background: #FFFFFF;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  box-shadow: inset 0 1px 1px 0 rgba(255, 255, 255, 1), 0 2px 8px -2px rgba(0, 0, 0, 0.03);
+}
+
+/* Sub-card surface within cards */
+html.dark .surface-subtle {
+  background: rgba(7, 11, 20, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+html.dark .surface-subtle:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+html:not(.dark) .surface-subtle {
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+html:not(.dark) .surface-subtle:hover {
+  border-color: #CBD5E1;
+  background: #F1F5F9;
+}
+
+/* Form inputs styling */
+html.dark .input-field {
+  background-color: #070B14;
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #F8FAFC;
+}
+html.dark .input-field:focus {
+  border-color: #3B82F6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+html:not(.dark) .input-field {
+  background-color: #F8FAFC;
+  border-color: #CBD5E1;
+  color: #0F172A;
+}
+html:not(.dark) .input-field:focus {
+  border-color: #2563EB;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+  background-color: #FFFFFF;
+}
+
 /* Boutons tactiles avec retour physique */
 .btn-haptic {
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .btn-haptic:active {
-  transform: scale(0.97);
+  transform: scale(0.975);
 }
 
 /* ── Mode Confidentialité (Privacy Mode) ── */
