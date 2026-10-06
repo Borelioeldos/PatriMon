@@ -92,6 +92,33 @@ Le frontend écoute sur `0.0.0.0`, ce qui le rend accessible à tous les apparei
 
 ---
 
-## 🎯 Prochaines Étapes de la Feuille de Route
-- **Phase 4** : Pilotage stratégique (Allocation cible vs réelle, calculateur de rééquilibrage de portefeuille, simulateur d'intérêts composés long terme).
-- **Phase 5 & Déploiement** : Conteneurisation Docker pour hébergement 24/7 sur votre vieux PC équipé de **Home Assistant OS**.
+### Phase 4 : Pilotage Stratégique, Allocation Cible & Projections FIRE
+10. **Matrice d'Allocation Cible & Presets Stratégiques** :
+    - Presets professionnels en 1 clic : *Équilibré 60/30/10*, *Offensif Dynamique 75/15/10*, *All-Weather / Résilient*, *Prudent*, et mode *Sur-mesure*.
+    - Analyse en temps réel des écarts (Deltas % et €) avec statuts visuels (*À renforcer*, *Conforme*, *Surpondéré*).
+11. **Calculateur de Versement Mensuel (DCA Intelligent Sans Vente)** :
+    - Optimisation financière sans frottement fiscal ni frais de courtage superflus.
+    - Ventilation mathématique optimale comblant les déficits par ordre de priorité avec enveloppes d'investissement suggérées.
+12. **Simulateur d'Intérêts Composés & Projections Long Terme (FIRE)** :
+    - Projections dynamiques multi-horizons (5 à 35 ans) avec capitalisation mensuelle discrète.
+    - Graphique AreaChart empilé matérialisant l'effet boule de neige (*Capital Initial* vs *Versements Cumulés* vs *Intérêts Composés Générés*).
+    - Détection automatique de l'**Année Crossover** et module d'indépendance financière (règle des 4% avec paliers *Lean*, *Standard*, *Fat FIRE*).
+
+### Phase 5 : Déploiement Permanent & Souverain (Home Assistant OS / Docker)
+13. **Conteneurisation Full-Stack Unique (Port 8000)** :
+    - Build multi-stage Node 20 + Python 3.12 slim unifiant FastAPI et le frontend React SPA sur un unique port `8000`.
+    - Persistance intégrale des données dans `/data` (base SQLite, configurations JSON, clés RSA).
+14. **Intégration Clé en Main Home Assistant OS** :
+    - Fichiers de module complémentaire natif (`config.yaml`, `DOCS.md`, `icon.png`, `logo.png`).
+    - Guide complet pas à pas pour installation dans `/addons/patrimon` et accès permanent 24/7 sur smartphone en Wi-Fi : voir [`DOCKER_DEPLOYMENT.md`](DOCKER_DEPLOYMENT.md).
+    - Script d'exportation de données en 1 clic (`scripts/prepare_docker_data.bat`).
+
+---
+
+## 🐳 Déploiement Permanent (Home Assistant OS & Docker)
+
+Consultez le guide complet : **[`DOCKER_DEPLOYMENT.md`](DOCKER_DEPLOYMENT.md)** pour :
+- Installer PatriMon comme **Module Complémentaire Local dans Home Assistant OS**.
+- Le déployer via **Portainer** ou **Docker Compose**.
+- Configurer l'accès **smartphone en Wi-Fi local** avec raccourci sur l'écran d'accueil (PWA).
+- Configurer l'accès distant sécurisé hors domicile (VPN WireGuard / Tailscale / Cloudflare).

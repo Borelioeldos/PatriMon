@@ -13,10 +13,11 @@ from typing import Dict, Any, Optional
 
 from sqlmodel import Session
 from app.database import engine
+from app.config import SYNC_SCHEDULER_CONFIG_PATH, BASE_DIR
 
 logger = logging.getLogger("sync_scheduler_service")
 
-CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "sync_scheduler_config.json"
+CONFIG_PATH = SYNC_SCHEDULER_CONFIG_PATH
 
 
 class SyncSchedulerService:
@@ -33,6 +34,15 @@ class SyncSchedulerService:
 
     def _load_config(self):
         """Charge la configuration depuis sync_scheduler_config.json si existant."""
+        legacy_path = BASE_DIR / "sync_scheduler_config.json"
+        if not CONFIG_PATH.exists() and legacy_path.exists() and CONFIG_PATH != legacy_path:
+            try:
+                import shutil
+                shutil.copy2(legacy_path, CONFIG_PATH)
+                logger.info(f"Migration de configuration scheduler: {legacy_path} -> {CONFIG_PATH}")
+            except Exception as e:
+                logger.warning(f"Impossible de migrer {legacy_path}: {e}")
+
         if CONFIG_PATH.exists():
             try:
                 with open(CONFIG_PATH, "r", encoding="utf-8") as f:

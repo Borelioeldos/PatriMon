@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import { 
   TrendingUp, Layers, PieChart as PieIcon, BarChart3, 
-  Activity, Clock, Compass
+  Activity, Clock, Compass, Target, ArrowRight
 } from 'lucide-react';
 import { api } from '../services/api';
 import { formatEUR, formatEURPrecise } from '../utils/format';
@@ -20,7 +20,7 @@ const COLORS = [
   '#DB2777', // Magenta / Rose
 ];
 
-export default function AllocationsCharts({ summary, theme = 'dark' }) {
+export default function AllocationsCharts({ summary, theme = 'dark', onSelectView }) {
   const [chartMode, setChartMode] = useState('evolution');
 
   // État du comparateur Benchmark
@@ -76,8 +76,7 @@ export default function AllocationsCharts({ summary, theme = 'dark' }) {
   };
 
   return (
-    <div className="double-bezel rounded-[1.75rem] p-1.5 transition-all">
-      <div className="double-bezel-inner rounded-[calc(1.75rem-0.375rem)] p-5 sm:p-6 space-y-5">
+    <div className="fintech-card p-5 sm:p-6 space-y-5">
         {/* Barre d'outils / Sélecteur de graphiques */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 dark:border-white/[0.06] pb-3.5">
           <div>
@@ -474,6 +473,16 @@ export default function AllocationsCharts({ summary, theme = 'dark' }) {
                   </div>
                 );
               })}
+              {onSelectView && (
+                <button
+                  onClick={() => onSelectView('strategy')}
+                  className="mt-3 w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-blue-600/10 via-indigo-600/10 to-violet-600/10 hover:from-blue-600/20 hover:to-indigo-600/20 border border-blue-500/25 text-blue-600 dark:text-blue-400 text-xs font-semibold flex items-center justify-center gap-2 transition-all btn-haptic"
+                >
+                  <Target className="w-3.5 h-3.5 text-blue-500" />
+                  <span>Piloter mon allocation cible & rééquilibrer (Phase 4)</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -524,7 +533,6 @@ export default function AllocationsCharts({ summary, theme = 'dark' }) {
             </div>
           </div>
         )}
-      </div>
     </div>
   );
 }

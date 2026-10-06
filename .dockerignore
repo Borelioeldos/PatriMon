@@ -1,0 +1,42 @@
+# ─── PatriMon — Docker Ignore ───
+# Exclusions pour optimiser la taille du contexte de build Docker
+
+# Contrôle de version
+.git/
+.gitignore
+
+# Dépendances et caches
+node_modules/
+frontend/node_modules/
+frontend/dist/
+__pycache__/
+*/__pycache__/
+*/*/__pycache__/
+*/*/*/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Données locales (doivent être montées via volume persistant /data)
+*.db
+*.db-journal
+*.sqlite
+backend/patrimoines.db*
+data/
+*.log
+
+# Fichiers d'environnement locaux
+.env
+.env.local
+.env.*.local
+
+# Fichiers IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Tests et scripts utilitaires locaux non nécessaires dans l'image
+backend/tests/
+*.bat

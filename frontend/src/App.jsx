@@ -12,6 +12,7 @@ import PeeImportModal from './components/PeeImportModal';
 import BankSyncModal from './components/BankSyncModal';
 import DriveSyncModal from './components/DriveSyncModal';
 import DividendsModal from './components/DividendsModal';
+import StrategyView from './components/StrategyView';
 import { api } from './services/api';
 import { Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
 
@@ -306,24 +307,24 @@ export default function App() {
           <>
             {/* Si aucun compte n'est configuré */}
             {summary?.accounts?.length === 0 ? (
-              <div className="bg-[#121824] border border-[#1C2536] rounded-xl p-8 text-center max-w-lg mx-auto my-12 shadow-2xl space-y-4">
-                <div className="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center mx-auto border border-blue-500/20">
-                  <Sparkles className="w-6 h-6" />
+              <div className="fintech-card p-8 sm:p-10 text-center max-w-lg mx-auto my-12 space-y-4">
+                <div className="w-12 h-12 rounded-2xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center mx-auto border border-blue-500/20 shadow-sm">
+                  <Sparkles className="w-6 h-6 stroke-[1.8]" />
                 </div>
-                <h2 className="text-base font-semibold text-white">Bienvenue sur votre suivi de patrimoine</h2>
-                <p className="text-xs text-slate-400 leading-relaxed">
+                <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">Bienvenue sur votre suivi de patrimoine</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
                   Aucun compte n'est encore configuré. Vous pouvez pré-configurer automatiquement vos 4 enveloppes (BoursoBank, Revolut, BNP Paribas, PEE) ou créer vos comptes manuellement.
                 </p>
                 <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2.5">
                   <button
                     onClick={handleSeedAccounts}
-                    className="w-full sm:w-auto px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs shadow-sm transition-all"
+                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-sm transition-all btn-haptic"
                   >
                     Initialiser mes enveloppes
                   </button>
                   <button
                     onClick={() => setIsAddAccountOpen(true)}
-                    className="w-full sm:w-auto px-4 py-2 rounded-lg bg-[#0B0F17] hover:bg-[#172030] text-slate-300 text-xs font-medium border border-[#1C2536] transition-all"
+                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/[0.05] dark:hover:bg-white/[0.1] text-slate-700 dark:text-slate-300 text-xs font-semibold border border-slate-200 dark:border-white/[0.08] transition-all btn-haptic"
                   >
                     Créer un compte personnalisé
                   </button>
@@ -336,7 +337,7 @@ export default function App() {
                   <div className="space-y-5 animate-fadeIn">
                     <KPICards summary={summary} onOpenDividendsModal={() => setIsDividendsModalOpen(true)} />
                     <PerformanceMetrics summary={summary} onOpenDividendsModal={() => setIsDividendsModalOpen(true)} />
-                    <AllocationsCharts summary={summary} theme={theme} />
+                    <AllocationsCharts summary={summary} theme={theme} onSelectView={setActiveView} />
                     <AccountsList
                       accounts={summary.accounts}
                       onDeleteAccount={handleDeleteAccount}
@@ -386,11 +387,18 @@ export default function App() {
                   <div className="space-y-5 animate-fadeIn">
                     <KPICards summary={summary} onOpenDividendsModal={() => setIsDividendsModalOpen(true)} />
                     <PerformanceMetrics summary={summary} onOpenDividendsModal={() => setIsDividendsModalOpen(true)} />
-                    <AllocationsCharts summary={summary} theme={theme} />
+                    <AllocationsCharts summary={summary} theme={theme} onSelectView={setActiveView} />
                   </div>
                 )}
 
-                {/* 4. Vue Journal des Transactions */}
+                {/* 4. Vue Stratégie & Projections (Phase 4) */}
+                {activeView === 'strategy' && (
+                  <div className="space-y-5 animate-fadeIn">
+                    <StrategyView summary={summary} theme={theme} />
+                  </div>
+                )}
+
+                {/* 5. Vue Journal des Transactions */}
                 {activeView === 'transactions' && (
                   <div className="space-y-5 animate-fadeIn">
                     <TransactionsList

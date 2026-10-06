@@ -32,6 +32,7 @@ export default function Navbar({
     { id: 'overview', label: "Vue d'ensemble" },
     { id: 'accounts', label: 'Comptes & Positions' },
     { id: 'analytics', label: 'Performance & Enveloppes' },
+    { id: 'strategy', label: 'Stratégie & Projections' },
     { id: 'transactions', label: 'Journal des Opérations' },
   ];
 

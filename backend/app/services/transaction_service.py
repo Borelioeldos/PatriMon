@@ -267,7 +267,16 @@ class TransactionService:
 
     @staticmethod
     def get_transaction_stats(session: Session) -> Dict[str, Any]:
-        """Agrège les statistiques financières des transactions."""
+        """Agrège les statistiques financières des transactions avec auto-réparation des gains réalisés."""
+        # Vérification si des ventes n'ont pas encore leur plus-value réalisée calculée
+        uncalc = session.exec(
+            select(Transaction)
+            .where(Transaction.type == TransactionType.SELL)
+            .where(Transaction.realized_gain_eur == None)  # noqa: E711
+        ).first()
+        if uncalc:
+            TransactionService.recalculate_all_realized_gains(session)
+
         tx_rows = session.exec(
             select(Transaction, Account)
             .outerjoin(Account, Transaction.account_id == Account.id)
@@ -323,7 +332,8 @@ class TransactionService:
     def recalculate_holding_pru(session: Session, holding_id: int) -> Optional[Holding]:
         """
         Reconstitue l'historique d'un actif depuis ses transactions pour recalculer
-        avec exactitude mathématique la quantité restante et le PRU pondéré.
+        avec exactitude mathématique la quantité restante, le PRU pondéré
+        et la plus-value réalisée (realized_gain_eur) sur chaque ordre de vente.
         Préserve la position d'ouverture initiale (initial_quantity et initial_unit_cost_eur).
         """
         holding = session.get(Holding, holding_id)
@@ -350,13 +360,25 @@ class TransactionService:
                 total_qty += q
             elif t.type == TransactionType.SELL:
                 q = t.quantity or 0.0
+                sale_proceeds = t.amount_eur or ((q * (t.unit_price_eur or 0.0)) - (t.fees_eur or 0.0))
+
                 if total_qty > 0:
                     current_pru = total_cost_eur / total_qty
+                    cost_basis = q * current_pru
+                    realized_gain = round(sale_proceeds - cost_basis, 2)
                     total_qty = max(0.0, total_qty - q)
                     total_cost_eur = total_qty * current_pru
                 else:
+                    # Si quantité préalable inconnue ou nulle, repli sur le coût unitaire du holding
+                    fallback_pru = holding.unit_cost_eur or holding.initial_unit_cost_eur or (t.unit_price_eur or 0.0)
+                    cost_basis = q * fallback_pru
+                    realized_gain = round(sale_proceeds - cost_basis, 2)
                     total_qty = 0.0
                     total_cost_eur = 0.0
+
+                if t.realized_gain_eur != realized_gain:
+                    t.realized_gain_eur = realized_gain
+                    session.add(t)
 
         holding.quantity = round(total_qty, 6)
         if total_qty > 0:
@@ -370,6 +392,77 @@ class TransactionService:
         session.commit()
         session.refresh(holding)
         return holding
+
+    @staticmethod
+    def recalculate_all_realized_gains(session: Session) -> int:
+        """
+        Parcourt l'ensemble des comptes et positions pour réconcilier toutes les ventes
+        et persister les gains nets réalisés exacts (realized_gain_eur).
+        Associe également les transactions orphelines (holding_id absent) par symbole.
+        """
+        # 1. Rattacher les transactions orphelines qui ont un symbole mais pas de holding_id
+        orphan_txs = session.exec(
+            select(Transaction)
+            .where(Transaction.holding_id == None)  # noqa: E711
+            .where(Transaction.symbol != None)  # noqa: E711
+        ).all()
+
+        for otx in orphan_txs:
+            if not otx.symbol:
+                continue
+            sym = otx.symbol.strip().upper()
+            h = session.exec(
+                select(Holding)
+                .where(Holding.account_id == otx.account_id)
+                .where(Holding.symbol == sym)
+            ).first()
+            if h:
+                otx.holding_id = h.id
+                session.add(otx)
+
+        session.commit()
+
+        # 2. Recalculer le PRU et les gains de chaque holding existant
+        holdings = session.exec(select(Holding)).all()
+        for h in holdings:
+            TransactionService.recalculate_holding_pru(session, h.id)
+
+        # 3. Traiter d'éventuelles ventes orphelines restantes sans holding_id
+        unlinked_sells = session.exec(
+            select(Transaction)
+            .where(Transaction.type == TransactionType.SELL)
+            .where(Transaction.realized_gain_eur == None)  # noqa: E711
+        ).all()
+
+        updated_count = 0
+        for s in unlinked_sells:
+            if s.symbol and s.account_id:
+                buys = session.exec(
+                    select(Transaction)
+                    .where(Transaction.account_id == s.account_id)
+                    .where(Transaction.symbol == s.symbol)
+                    .where(Transaction.type == TransactionType.BUY)
+                    .where(Transaction.transaction_date <= s.transaction_date)
+                    .order_by(Transaction.transaction_date.asc())
+                ).all()
+                if buys:
+                    total_buy_qty = sum(b.quantity or 0.0 for b in buys)
+                    total_buy_cost = sum(
+                        ((b.quantity or 0.0) * (b.unit_price_eur or 0.0)) + (b.fees_eur or 0.0)
+                        if (b.unit_price_eur or 0.0) > 0 else (b.amount_eur or 0.0)
+                        for b in buys
+                    )
+                    if total_buy_qty > 0:
+                        pru = total_buy_cost / total_buy_qty
+                        q = s.quantity or 0.0
+                        sale_amt = s.amount_eur or ((q * (s.unit_price_eur or 0.0)) - (s.fees_eur or 0.0))
+                        s.realized_gain_eur = round(sale_amt - (q * pru), 2)
+                        session.add(s)
+                        updated_count += 1
+
+        session.commit()
+        logger.info(f"Recalcul automatique des gains réalisés terminé ({len(holdings)} holdings vérifiés).")
+        return updated_count
 
 
 transaction_service = TransactionService()

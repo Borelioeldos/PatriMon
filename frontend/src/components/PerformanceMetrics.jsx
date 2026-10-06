@@ -27,8 +27,7 @@ export default function PerformanceMetrics({ summary, onOpenDividendsModal }) {
   return (
     <div className="space-y-4">
       {/* ── 1. KPIs Globaux de Performance (GIPS & TRI) ── */}
-      <div className="double-bezel rounded-[1.75rem] p-1.5 transition-all">
-        <div className="double-bezel-inner rounded-[calc(1.75rem-0.375rem)] p-5 sm:p-6 space-y-4">
+      <div className="fintech-card p-5 sm:p-6 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/80 dark:border-white/[0.06] pb-3.5">
             <div>
               <div className="flex items-center gap-2">
@@ -136,12 +135,10 @@ export default function PerformanceMetrics({ summary, onOpenDividendsModal }) {
             </div>
           </div>
         </div>
-      </div>
 
       {/* ── 2. Décloisonnement des Performances par Enveloppe ── */}
       {byAccount.length > 0 && (
-        <div className="double-bezel rounded-[1.75rem] p-1.5 transition-all">
-          <div className="double-bezel-inner rounded-[calc(1.75rem-0.375rem)] p-5 sm:p-6 space-y-4">
+        <div className="fintech-card p-5 sm:p-6 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/80 dark:border-white/[0.06] pb-3.5">
               <div>
                 <div className="flex items-center gap-2">
@@ -240,13 +237,11 @@ export default function PerformanceMetrics({ summary, onOpenDividendsModal }) {
               })}
             </div>
           </div>
-        </div>
       )}
 
       {/* ── 3. Module Analytique Avancé des Dividendes ── */}
       {(showDividendsDetail || dividendAnalytics.operations_count > 0) && (
-        <div id="dividend-analytics" className="double-bezel rounded-[1.75rem] p-1.5 transition-all">
-          <div className="double-bezel-inner rounded-[calc(1.75rem-0.375rem)] p-5 sm:p-6 space-y-4">
+        <div id="dividend-analytics" className="fintech-card p-5 sm:p-6 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/80 dark:border-white/[0.06] pb-3.5">
               <div>
                 <div className="flex items-center gap-2">
@@ -373,7 +368,6 @@ export default function PerformanceMetrics({ summary, onOpenDividendsModal }) {
               </div>
             </div>
           </div>
-        </div>
       )}
     </div>
   );

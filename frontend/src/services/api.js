@@ -139,6 +139,10 @@ export const api = {
     return request(`/transactions/recalculate-holding/${holdingId}`, { method: 'POST' }, "Erreur lors du recalcul de la position");
   },
 
+  async recalculateAllTransactions() {
+    return request('/transactions/recalculate-all', { method: 'POST' }, "Erreur lors du recalcul global des transactions");
+  },
+
   // ─── Benchmarks ───
   async getBenchmarks() {
     try {
@@ -253,5 +257,35 @@ export const api = {
 
   async getDriveLogs(limit = 30) {
     return request(`/google-drive/logs?limit=${limit}`, {}, "Erreur récupération historique Google Drive");
+  },
+
+  // ─── Pilotage Stratégique, Allocation Cible & Projections FIRE (Phase 4) ───
+  async getStrategyAllocation() {
+    return request('/strategy/allocation', {}, "Erreur récupération de la stratégie d'allocation");
+  },
+
+  async updateStrategyAllocation(allocations, presetId = 'custom') {
+    return request('/strategy/allocation', {
+      method: 'POST',
+      body: { allocations, preset_id: presetId },
+    }, "Erreur enregistrement de l'allocation cible");
+  },
+
+  async simulateRebalance(contributionAmount = 500, customTargets = null) {
+    return request('/strategy/rebalance-simulate', {
+      method: 'POST',
+      body: { contribution_amount: contributionAmount, custom_targets: customTargets },
+    }, "Erreur calcul du rééquilibrage");
+  },
+
+  async calculateProjections(params = {}) {
+    return request('/strategy/projections', {
+      method: 'POST',
+      body: params,
+    }, "Erreur calcul des projections d'intérêts composés");
+  },
+
+  async getStrategyPresets() {
+    return request('/strategy/presets', {}, "Erreur récupération des presets");
   },
 };

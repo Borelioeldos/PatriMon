@@ -18,11 +18,22 @@ from app.services.bourso_statement_parser import BoursoStatementParser
 from app.services.revolut_csv_parser import RevolutCsvParser
 from app.services.pee_import_service import PeeImportService
 
+from app.config import DATA_DIR
+
 logger = logging.getLogger("google_drive_service")
 
-# Chemin des jetons MCP / OAuth sur la machine (avec surcharge env possible)
-OAUTH_TOKENS_PATH = os.getenv("DRIVE_OAUTH_TOKENS_PATH", r"C:\Users\Borel\.gemini\antigravity\mcp_oauth_tokens.json")
-MCP_CONFIG_PATH = os.getenv("DRIVE_MCP_CONFIG_PATH", r"C:\Users\Borel\.gemini\config\mcp_config.json")
+# Chemin des jetons MCP / OAuth sur la machine (avec surcharge env possible et fallback /data)
+_data_tokens = DATA_DIR / "mcp_oauth_tokens.json"
+_data_mcp = DATA_DIR / "mcp_config.json"
+
+OAUTH_TOKENS_PATH = os.getenv(
+    "DRIVE_OAUTH_TOKENS_PATH",
+    str(_data_tokens if _data_tokens.exists() else r"C:\Users\Borel\.gemini\antigravity\mcp_oauth_tokens.json")
+)
+MCP_CONFIG_PATH = os.getenv(
+    "DRIVE_MCP_CONFIG_PATH",
+    str(_data_mcp if _data_mcp.exists() else r"C:\Users\Borel\.gemini\config\mcp_config.json")
+)
 
 GOOGLE_DRIVE_MCP_URL = "https://drivemcp.googleapis.com/mcp/v1"
 DRIVE_API_BASE = "https://www.googleapis.com/drive/v3"

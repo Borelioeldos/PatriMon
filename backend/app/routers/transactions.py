@@ -153,3 +153,10 @@ def recalculate_holding(holding_id: int, session: Session = Depends(get_session)
     if not holding:
         raise HTTPException(status_code=404, detail="Position introuvable")
     return {"message": "PRU et quantité recalculés avec succès", "holding_id": holding.id, "pru_eur": holding.unit_cost_eur, "quantity": holding.quantity}
+
+
+@router.post("/recalculate-all")
+def recalculate_all_transactions(session: Session = Depends(get_session)):
+    """Recalcule les positions et les plus-values réalisées pour l'ensemble des comptes et holdings."""
+    count = transaction_service.recalculate_all_realized_gains(session)
+    return {"message": "Plus-values réalisées et PRU recalculés avec succès pour l'ensemble du portefeuille", "updated_count": count}

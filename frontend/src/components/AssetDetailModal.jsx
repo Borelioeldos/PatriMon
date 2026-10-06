@@ -64,17 +64,13 @@ export default function AssetDetailModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/60 dark:bg-black/85 backdrop-blur-xl overflow-y-auto animate-fadeIn">
-      {/* Outer Shell Double-Bezel */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/50 dark:bg-black/80 backdrop-blur-xl overflow-y-auto animate-fadeIn" onClick={onClose}>
       <div 
-        className="double-bezel rounded-[2rem] p-1.5 w-full max-w-4xl shadow-[0_25px_60px_-15px_rgba(0,0,0,0.4)] dark:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.9)] my-auto"
+        className="bg-white dark:bg-[#0C111C] border border-slate-200/90 dark:border-white/[0.1] rounded-2xl w-full max-w-4xl shadow-2xl max-h-[90vh] flex flex-col overflow-hidden my-auto transition-all"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Inner Core */}
-        <div className="double-bezel-inner rounded-[calc(2rem-0.375rem)] max-h-[90vh] flex flex-col overflow-hidden">
-          
-          {/* En-tête */}
-          <div className="px-5 py-4 border-b border-slate-200 dark:border-white/[0.06] flex items-center justify-between bg-slate-50 dark:bg-[#080D18]/80">
+        {/* En-tête */}
+        <div className="px-5 py-4 border-b border-slate-200/80 dark:border-white/[0.06] flex items-center justify-between bg-slate-50/70 dark:bg-[#080D18]/80">
             <div className="flex items-center gap-3.5">
               <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-500/20 to-indigo-500/10 border border-blue-500/30 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-sm tracking-tight shadow-md">
                 {holding?.symbol ? holding.symbol.slice(0, 3) : <TrendingUp className="w-5 h-5" />}
@@ -345,6 +341,5 @@ export default function AssetDetailModal({
           </div>
         </div>
       </div>
-    </div>
-  );
-}
+    );
+  }

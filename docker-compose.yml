@@ -1,28 +1,41 @@
 # ─── PatriMon — Docker Compose ───
-# Lancement : docker compose up -d --build
+# Déploiement souverain 24/7 sur serveur / Home Assistant OS (via Portainer)
+#
+# Commandes usuelles :
+#   - Démarrer / Mettre à jour : docker compose up -d --build
+#   - Voir les logs en direct  : docker compose logs -f
+#   - Arrêter proprement      : docker compose down
 
 services:
   patrimon:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: patrimon:latest
     container_name: patrimon
     restart: unless-stopped
     ports:
       - "8000:8000"
     volumes:
-      # Persister la base SQLite entre les redémarrages
+      # Option 1 (Recommandée) : Volume Docker persistant géré
       - patrimon-data:/data
+      # Option 2 (Alternative) : Dossier local sur votre machine hôte
+      # - ./data:/data
     environment:
+      - PATRIMON_DATA_DIR=/data
       - PATRIMON_DB_PATH=/data/patrimoines.db
       - PATRIMON_HOST=0.0.0.0
       - PATRIMON_PORT=8000
+      - PATRIMON_RELOAD=false
       - PATRIMON_CORS_ORIGINS=*
       - PATRIMON_CACHE_TTL=60
       - PATRIMON_CURRENCY_CACHE_TTL=600
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/portfolio/summary')"]
       interval: 30s
       timeout: 5s
       retries: 3
+      start_period: 10s
 
 volumes:
   patrimon-data:

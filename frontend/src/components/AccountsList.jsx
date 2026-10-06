@@ -111,7 +111,7 @@ export default function AccountsList({
         </div>
       </div>
 
-      {/* Grille des comptes avec Double-Bezel Hardware Architecture */}
+      {/* Grille des comptes avec Fintech Card Architecture */}
       <div className="grid grid-cols-1 gap-3.5">
         {accounts.map((acc) => {
           const isExpanded = !!expandedAccounts[acc.id];
@@ -130,9 +130,8 @@ export default function AccountsList({
           return (
             <div 
               key={acc.id}
-              className="double-bezel rounded-[1.75rem] p-1.5 group transition-all"
+              className="fintech-card overflow-hidden group transition-all"
             >
-              <div className="double-bezel-inner rounded-[calc(1.75rem-0.375rem)] overflow-hidden">
                 {/* En-tête du compte */}
                 <div 
                   className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 cursor-pointer select-none hover:bg-slate-50/70 dark:hover:bg-white/[0.015] transition-colors"
@@ -495,7 +494,6 @@ export default function AccountsList({
                     </div>
                   </div>
                 )}
-              </div>
             </div>
           );
         })}

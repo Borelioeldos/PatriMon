@@ -12,28 +12,27 @@
     font-feature-settings: "cv02", "cv03", "cv04", "cv11", "tnum";
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    transition: background-color 0.25s ease, color 0.25s ease;
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
 
-  /* Thème Sombre (OLED Obsidian & Radial Glows) */
+  /* Thème Sombre (OLED Obsidian & Modern Fintech Mesh) */
   html.dark body {
-    background-color: #070A11;
-    color: #F1F5F9;
+    background-color: #06090F;
+    color: #F8FAFC;
     background-image: 
-      radial-gradient(circle at 50% -10%, rgba(37, 99, 235, 0.15) 0%, transparent 50%),
-      radial-gradient(circle at 90% 20%, rgba(16, 185, 129, 0.06) 0%, transparent 40%),
-      radial-gradient(circle at 10% 80%, rgba(139, 92, 246, 0.05) 0%, transparent 40%);
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(37, 99, 235, 0.12) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 40% at 100% 10%, rgba(16, 185, 129, 0.05) 0%, transparent 50%),
+      radial-gradient(ellipse 50% 30% at 0% 80%, rgba(99, 102, 241, 0.04) 0%, transparent 50%);
     background-attachment: fixed;
   }
 
-  /* Thème Clair (Porcelaine & Titanium Haute Définition) */
+  /* Thème Clair (High-End Swiss Fintech Porcelaine) */
   html:not(.dark) body {
     background-color: #F8FAFC;
     color: #0F172A;
     background-image: 
-      radial-gradient(circle at 50% -10%, rgba(37, 99, 235, 0.07) 0%, transparent 55%),
-      radial-gradient(circle at 90% 20%, rgba(16, 185, 129, 0.04) 0%, transparent 45%),
-      radial-gradient(circle at 10% 80%, rgba(139, 92, 246, 0.03) 0%, transparent 45%);
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(37, 99, 235, 0.05) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 40% at 100% 10%, rgba(16, 185, 129, 0.03) 0%, transparent 50%);
     background-attachment: fixed;
   }
 
@@ -43,7 +42,7 @@
   }
 }
 
-/* Scrollbars personnalisées ultra-fines et ciselées */
+/* Scrollbars personnalisées ultra-fines */
 ::-webkit-scrollbar {
   width: 5px;
   height: 5px;
@@ -69,11 +68,11 @@ html:not(.dark) ::-webkit-scrollbar-thumb:hover {
   background: #94A3B8;
 }
 
-/* Animations de présence & courbure Apple / Linear */
+/* Animations de transition */
 @keyframes fadeIn {
   from { 
     opacity: 0; 
-    transform: translateY(8px); 
+    transform: translateY(6px); 
   }
   to { 
     opacity: 1; 
@@ -82,51 +81,75 @@ html:not(.dark) ::-webkit-scrollbar-thumb:hover {
 }
 
 .animate-fadeIn {
-  animation: fadeIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: fadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-/* Architecture Double-Bezel (Doppelrand) adaptée Dark & Light */
-html.dark .double-bezel {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.7);
+/* ── Fintech Cards (High-End Single Container Architecture) ── */
+.fintech-card {
+  position: relative;
+  border-radius: 1.25rem; /* 20px */
+  transition: transform 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out;
 }
 
-html.dark .double-bezel-inner {
+html.dark .fintech-card {
   background: #0B101D;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  box-shadow: inset 0 1px 1px 0 rgba(255, 255, 255, 0.09);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
+}
+html.dark .fintech-card:hover {
+  border-color: rgba(255, 255, 255, 0.14);
 }
 
-html:not(.dark) .double-bezel {
-  background: rgba(0, 0, 0, 0.02);
-  border: 1px solid #E2E8F0;
-  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.04);
-}
-
-html:not(.dark) .double-bezel-inner {
+html:not(.dark) .fintech-card {
   background: #FFFFFF;
-  border: 1px solid rgba(0, 0, 0, 0.04);
-  box-shadow: inset 0 1px 1px 0 rgba(255, 255, 255, 1), 0 2px 8px -2px rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 10px 25px -5px rgba(0, 0, 0, 0.03);
+}
+html:not(.dark) .fintech-card:hover {
+  border-color: #CBD5E1;
 }
 
 /* Sub-card surface within cards */
+.surface-subtle {
+  border-radius: 0.875rem; /* 14px */
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out;
+}
+
 html.dark .surface-subtle {
-  background: rgba(7, 11, 20, 0.85);
+  background: rgba(14, 20, 36, 0.7);
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 html.dark .surface-subtle:hover {
+  background: rgba(18, 26, 46, 0.9);
   border-color: rgba(255, 255, 255, 0.12);
 }
 
 html:not(.dark) .surface-subtle {
   background: #F8FAFC;
   border: 1px solid #E2E8F0;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
 }
 html:not(.dark) .surface-subtle:hover {
-  border-color: #CBD5E1;
   background: #F1F5F9;
+  border-color: #CBD5E1;
+}
+
+/* Backward compatibility for double-bezel to cleanly transition without breaking */
+.double-bezel {
+  border-radius: 1.25rem;
+  transition: all 0.2s ease-out;
+}
+html.dark .double-bezel {
+  background: #0B101D;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
+}
+html:not(.dark) .double-bezel {
+  background: #FFFFFF;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 10px 25px -5px rgba(0, 0, 0, 0.03);
+}
+.double-bezel-inner {
+  background: transparent;
 }
 
 /* Form inputs styling */
@@ -151,12 +174,12 @@ html:not(.dark) .input-field:focus {
   background-color: #FFFFFF;
 }
 
-/* Boutons tactiles avec retour physique */
+/* Boutons tactiles avec retour physique (emil-design-eng) */
 .btn-haptic {
-  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.15s ease-out, border-color 0.15s ease-out, box-shadow 0.15s ease-out;
 }
 .btn-haptic:active {
-  transform: scale(0.975);
+  transform: scale(0.98);
 }
 
 /* ── Mode Confidentialité (Privacy Mode) ── */
@@ -165,7 +188,7 @@ html:not(.dark) .input-field:focus {
 .privacy-active [data-privacy="true"] {
   filter: blur(7px);
   user-select: none;
-  transition: filter 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: filter 0.12s ease-out;
 }
 
 .privacy-active .privacy-blur:hover,

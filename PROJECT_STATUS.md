@@ -195,19 +195,69 @@ Suivie_Patrimoine/
 
 ---
 
-## 4. Ce Qu'il Reste à Faire (Feuille de Route pour les Prochaines Étapes)
+- [x] **Phase 4 Complète : Pilotage Stratégique, Allocation Cible & Projections FIRE (L'Outil Décisionnel)** :
+  - **Matrice d'Allocation Cible & Presets Stratégiques** :
+    - Presets professionnels en 1 clic : *Équilibré 60/30/10*, *Offensif Dynamique 75/15/10*, *All-Weather / Résilient*, *Prudent*, et mode *Sur-mesure*.
+    - Persistance locale de la configuration dans `strategy_config.json`.
+    - Analyse en temps réel des écarts (Deltas % et €) avec statuts visuels (*À renforcer*, *Conforme*, *Surpondéré*).
+  - **Calculateur de Versement Mensuel (DCA Intelligent Sans Vente)** :
+    - Algorithme d'optimisation financière sans frottement fiscal ni frais de courtage superflus.
+    - Saisie d'un montant d'apport (presets +200 €, +300 €, +500 €, +1 000 €, +2 000 € ou montant libre).
+    - Ventilation mathématique optimale comblant les déficits par ordre de priorité avec enveloppes d'investissement suggérées (PEA, CTO, PEE, Livrets).
+    - Visualisation de la réduction des écarts (Delta avant vs Delta après versement).
+  - **Simulateur d'Intérêts Composés & Projections Long Terme** :
+    - Projections dynamiques multi-horizons (5 à 35 ans) avec capitalisation mensuelle discrète.
+    - Sliders interactifs en direct : Capital initial (pré-rempli avec le patrimoine net live), Épargne mensuelle, Rendement espéré (World 7,5%, S&P 10%), Horizon et Inflation.
+    - Graphique AreaChart empilé matérialisant l'effet boule de neige : *Capital Initial* vs *Versements Cumulés* vs *Intérêts Composés Générés*.
+    - Détection automatique de l'**Année Crossover** (croisement où les intérêts annuels dépassent les versements annuels).
+  - **Module d'Indépendance Financière (FIRE)** :
+    - Calcul du capital cible d'indépendance financière selon la règle des 4% (*Safe Withdrawal Rate*).
+    - Paliers *Lean FIRE (75%)*, *Standard FIRE (100%)* et *Fat FIRE (130%)*.
+    - Rente mensuelle brute et réelle (pouvoir d'achat net d'inflation) générée à terme.
+    - Pourcentage d'avancement et année prévisionnelle d'atteinte du FIRE.
+  - **Refonte UI/UX Complète — Design Fintech Haute Précision (Stripe/Linear/Mercury/Revolut)** :
+    - Installation et exploitation des compétences d'élite : `impeccable`, `emil-design-eng`, `vercel-react-best-practices`, `web-design-guidelines`, `data-visualization`.
+    - **Suppression définitive du Doppelrand / Double-Bezel** : passage à une architecture de conteneurs uniques haut de gamme (`.fintech-card`, `.surface-subtle`).
+    - **Palette & Maillage** : Thème sombre OLED Obsidian (`#06090F` avec mesh radial discret bleu/émeraude/indigo) et thème clair Porcelaine Suisse (`#F8FAFC`).
+    - **Command Bar & Navigation** : Header flottant avec îlot central, toggle thème sombre/clair, toggle mode confidentialité (floutage 1-clic avec raccourci clavier `P`), auto-refresh 30s et accès rapide outils DSP2 / Google Drive.
+    - **Journal des Opérations Rehaussé** : Mini-stats de trésorerie en direct (entrées, sorties, solde net), filtrage instantané multi-critères avec reset, tableau typographique haute lisibilité avec badges DSP2 et actions contextuelles.
+    - **Modals Modernisés** : Dialogues à coque unique avec `backdrop-blur-md`, coins arrondis 2xl, inputs unifiés `.input-field` et fermeture au clic sur le fond.
+    - **Retours Tactiles Physique** : Micro-interactions `.btn-haptic` (`active:scale-[0.98]`).
+  - **Validation & Zéro Régression** : 12/12 tests unitaires passants (`backend/tests/`), build Vite (`npm run build`) validé à 100%.
 
-### Phase 4 : Pilotage Stratégique & Aide à la Décision
-- [ ] **Allocation Cible vs Réelle** :
-  - Définir des cibles d'allocation personnalisables (ex: 60% Actions, 20% Épargne de sécurité, 10% PEE, 10% Crypto).
-  - Calculateur de versement mensuel : "Dans quelle enveloppe investir mes 500 € ce mois-ci pour rééquilibrer mon portefeuille ?"
-- [ ] **Simulateur d'Intérêts Composés & Projections Long Terme** :
-  - Projection dynamique à 5, 10, 20 ans selon un rendement annuel moyen attendu et un effort d'épargne mensuel programmable.
+---
 
-### Phase 5 : Déploiement Permanent (Home Assistant OS / Vieux PC)
-- [ ] Créer un Dockerfile multi-stage pour le backend FastAPI et le frontend Vite.
-- [ ] Créer un docker-compose.yml avec volume persistant pour SQLite.
-- [ ] Documenter le déploiement sur le vieux PC sous **Home Assistant OS** (via Portainer ou add-on local) pour un accès sécurisé 24/7 depuis le smartphone sur le Wi-Fi local.
+- [x] **Phase 5 Complète : Conteneurisation Docker & Déploiement Permanent (Home Assistant OS / Vieux PC)** :
+  - **Unification Full-Stack sous Conteneur Unique (Port 8000)** :
+    - Dockerfile multi-stage (`node:20-alpine` + `python:3.12-slim`) servant simultanément les routes d'API, Swagger et la SPA React Vite sur le port `8000`.
+    - Healthcheck Docker intégré interrogeant `/api/portfolio/summary`.
+    - Fichier `.dockerignore` complet éliminant `node_modules`, `.git`, bases locales et caches du build context.
+  - **Architecture de Persistance Centralisée (`/data`)** :
+    - Base SQLite (`patrimoines.db`), configurations JSON (`open_banking_config.json`, `strategy_config.json`, `sync_scheduler_config.json`) et clés RSA stockées dans le volume persistant `/data`.
+    - Migration douce et automatique : toute configuration existante est préservée et copiée vers `/data` sans friction.
+  - **Module Complémentaire Local Home Assistant OS (Add-on Local)** :
+    - Prise en charge native avec `config.yaml`, `DOCS.md`, `CHANGELOG.md`, `icon.png` et `logo.png` pour installation dans `/addons/patrimon`.
+    - Démarrage automatique au boot, watchdog, et intégration dans la barre latérale ou dashboard via carte Page Web.
+  - **Support Portainer & Docker Compose** :
+    - `docker-compose.yml` de production avec politique `unless-stopped` et volumes nommés.
+  - **Outils & Documentation Complète** :
+    - Script 1-clic `scripts/prepare_docker_data.py` / `prepare_docker_data.bat` regroupant instantanément toutes les données dans `./data/`.
+    - Guide exhaustif `DOCKER_DEPLOYMENT.md` détaillant l'installation Home Assistant OS, Portainer, l'accès smartphone 24/7 (PWA) et l'accès distant sécurisé (WireGuard / Tailscale).
+
+---
+
+## 4. Ce Qu'il Reste à Faire (Perspectives Futures)
+
+Toutes les 5 phases de conception et de déploiement sont désormais **100% achevées et opérationnelles** :
+- [x] Phase 1 : Cœur temps réel & multi-établissements (BoursoBank, BNP, Revolut, PEE).
+- [x] Phase 2 : Transactions, moteur PRU pondéré & métriques financières avancées (TWR, TRI/MWR, Benchmarks).
+- [x] Phase 3 : Automatisation externe DSP2 (Enable Banking), synchro périodique, import PEE Schneider et Google Drive Bourse.
+- [x] Phase 4 : Pilotage stratégique, allocation cible, DCA intelligent et projections FIRE.
+- [x] Phase 5 : Conteneurisation Docker & intégration Home Assistant OS pour accès permanent smartphone 24/7.
+
+### Pistes d'Évolutions Futures (Optionnelles) :
+- [ ] Notifications push / alertes (ex: via Home Assistant notify ou Webhooks) lors des dividendes perçus ou déviations fortes d'allocation.
+- [ ] Module fiscal annuel (estimation de plus-values imposables selon flat tax ou barème).
 
 ---
 

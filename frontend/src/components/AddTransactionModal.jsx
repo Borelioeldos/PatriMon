@@ -316,16 +316,15 @@ export default function AddTransactionModal({
 
   return (
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-black/80 backdrop-blur-md animate-fadeIn"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 dark:bg-black/75 backdrop-blur-md animate-fadeIn"
       onClick={onClose}
     >
       <div 
-        className="double-bezel rounded-[2rem] p-1.5 w-full max-w-xl shadow-2xl my-auto"
+        className="bg-white dark:bg-[#0C111C] border border-slate-200/90 dark:border-white/[0.1] rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] my-auto transition-all"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="double-bezel-inner rounded-[calc(2rem-0.375rem)] overflow-hidden flex flex-col max-h-[92vh]">
-          {/* Header */}
-          <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-200 dark:border-white/[0.06] bg-slate-50 dark:bg-[#080D18]/80">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-200/80 dark:border-white/[0.06] bg-slate-50/70 dark:bg-[#080D18]/80">
             <div>
               <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400" />
@@ -800,6 +799,5 @@ export default function AddTransactionModal({
           </form>
         </div>
       </div>
-    </div>
-  );
-}
+    );
+  }

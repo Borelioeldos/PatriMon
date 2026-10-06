@@ -1,0 +1,35 @@
+# ─── PatriMon — Git Ignore ───
+
+# Données sensibles & base locale (Souveraineté des données)
+data/
+*.db
+*.db-journal
+*.sqlite
+backend/patrimoines.db*
+backend/open_banking_config.json
+backend/certs/
+backend/sync_scheduler_config.json
+backend/strategy_config.json
+mcp_oauth_tokens.json
+mcp_config.json
+.env
+.env.local
+.env.*.local
+
+# Dépendances & Caches
+node_modules/
+frontend/node_modules/
+__pycache__/
+*/__pycache__/
+*/*/__pycache__/
+*/*/*/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -16,12 +16,13 @@ import jwt
 from sqlmodel import Session, select
 
 from app.models import BankConnection, BankAccountMapping, Account, AccountType, Transaction, TransactionType
+from app.config import OPEN_BANKING_CONFIG_PATH, BASE_DIR
 from app.services.transaction_enricher import transaction_enricher
 
 logger = logging.getLogger("open_banking_service")
 
 ENABLE_BANKING_API_BASE = "https://api.enablebanking.com"
-CONFIG_FILE_PATH = Path(__file__).resolve().parent.parent.parent / "open_banking_config.json"
+CONFIG_FILE_PATH = OPEN_BANKING_CONFIG_PATH
 
 # Banques populaires en France
 POPULAR_INSTITUTIONS = [
@@ -99,6 +100,15 @@ class OpenBankingService:
 
     def _load_config(self):
         """Charge la configuration depuis open_banking_config.json si existant."""
+        legacy_path = BASE_DIR / "open_banking_config.json"
+        if not CONFIG_FILE_PATH.exists() and legacy_path.exists() and CONFIG_FILE_PATH != legacy_path:
+            try:
+                import shutil
+                shutil.copy2(legacy_path, CONFIG_FILE_PATH)
+                logger.info(f"Migration de configuration Open Banking: {legacy_path} -> {CONFIG_FILE_PATH}")
+            except Exception as e:
+                logger.warning(f"Impossible de migrer {legacy_path}: {e}")
+
         if CONFIG_FILE_PATH.exists():
             try:
                 with open(CONFIG_FILE_PATH, "r", encoding="utf-8") as f:
