@@ -18,22 +18,62 @@ from app.services.bourso_statement_parser import BoursoStatementParser
 from app.services.revolut_csv_parser import RevolutCsvParser
 from app.services.pee_import_service import PeeImportService
 
+from pathlib import Path
 from app.config import DATA_DIR
 
 logger = logging.getLogger("google_drive_service")
 
-# Chemin des jetons MCP / OAuth sur la machine (avec surcharge env possible et fallback /data)
-_data_tokens = DATA_DIR / "mcp_oauth_tokens.json"
-_data_mcp = DATA_DIR / "mcp_config.json"
 
-OAUTH_TOKENS_PATH = os.getenv(
-    "DRIVE_OAUTH_TOKENS_PATH",
-    str(_data_tokens if _data_tokens.exists() else r"C:\Users\Borel\.gemini\antigravity\mcp_oauth_tokens.json")
-)
-MCP_CONFIG_PATH = os.getenv(
-    "DRIVE_MCP_CONFIG_PATH",
-    str(_data_mcp if _data_mcp.exists() else r"C:\Users\Borel\.gemini\config\mcp_config.json")
-)
+def resolve_oauth_tokens_path() -> Optional[Path]:
+    """
+    Recherche dynamique du fichier de jetons OAuth mcp_oauth_tokens.json dans les
+    différents environnements (Home Assistant OS /config/patrimon, /data, Docker, Windows).
+    """
+    env_path = os.getenv("DRIVE_OAUTH_TOKENS_PATH")
+    if env_path and Path(env_path).is_file():
+        return Path(env_path)
+
+    candidates = [
+        Path("/config/patrimon/mcp_oauth_tokens.json"),
+        Path("/config/mcp_oauth_tokens.json"),
+        DATA_DIR / "mcp_oauth_tokens.json",
+        Path("/share/patrimon/mcp_oauth_tokens.json"),
+        Path("/share/mcp_oauth_tokens.json"),
+        Path(r"C:\Users\Borel\.gemini\antigravity\mcp_oauth_tokens.json"),
+        Path.home() / ".gemini" / "antigravity" / "mcp_oauth_tokens.json",
+    ]
+    for c in candidates:
+        try:
+            if c.is_file():
+                return c
+        except Exception:
+            continue
+    return None
+
+
+def resolve_mcp_config_path() -> Optional[Path]:
+    """Recherche dynamique du fichier mcp_config.json."""
+    env_path = os.getenv("DRIVE_MCP_CONFIG_PATH")
+    if env_path and Path(env_path).is_file():
+        return Path(env_path)
+
+    candidates = [
+        Path("/config/patrimon/mcp_config.json"),
+        Path("/config/mcp_config.json"),
+        DATA_DIR / "mcp_config.json",
+        Path("/share/patrimon/mcp_config.json"),
+        Path("/share/mcp_config.json"),
+        Path(r"C:\Users\Borel\.gemini\config\mcp_config.json"),
+        Path.home() / ".gemini" / "config" / "mcp_config.json",
+    ]
+    for c in candidates:
+        try:
+            if c.is_file():
+                return c
+        except Exception:
+            continue
+    return None
+
 
 GOOGLE_DRIVE_MCP_URL = "https://drivemcp.googleapis.com/mcp/v1"
 DRIVE_API_BASE = "https://www.googleapis.com/drive/v3"
@@ -49,10 +89,14 @@ class GoogleDriveService:
 
     def _get_access_token(self) -> str:
         """Récupère le jeton d'accès OAuth actif et le rafraîchit automatiquement si expiré."""
-        if not os.path.exists(OAUTH_TOKENS_PATH):
-            raise ValueError(f"Fichier de jetons introuvable : {OAUTH_TOKENS_PATH}")
+        token_path = resolve_oauth_tokens_path()
+        if not token_path or not token_path.is_file():
+            raise ValueError(
+                "Fichier de jetons Google Drive introuvable. "
+                "En environnement Home Assistant, vérifiez la présence de /config/patrimon/mcp_oauth_tokens.json"
+            )
 
-        with open(OAUTH_TOKENS_PATH, "r", encoding="utf-8") as f:
+        with open(token_path, "r", encoding="utf-8") as f:
             tokens_data = json.load(f)
 
         drive_info = tokens_data.get(GOOGLE_DRIVE_MCP_URL, {})
@@ -61,6 +105,19 @@ class GoogleDriveService:
         refresh_token = token_info.get("refresh_token")
         client_id = drive_info.get("client_id")
         client_secret = drive_info.get("client_secret")
+
+        # Fallback client_id et client_secret depuis mcp_config.json si absents
+        if not client_id or not client_secret:
+            cfg_path = resolve_mcp_config_path()
+            if cfg_path and cfg_path.is_file():
+                try:
+                    with open(cfg_path, "r", encoding="utf-8") as f:
+                        cfg_data = json.load(f)
+                    drive_oauth = cfg_data.get("mcpServers", {}).get("drive", {}).get("oauth", {})
+                    client_id = client_id or drive_oauth.get("clientId")
+                    client_secret = client_secret or drive_oauth.get("clientSecret")
+                except Exception as e:
+                    logger.warning(f"Erreur lecture mcp_config.json : {e}")
 
         # Vérifier la validité du token
         if access_token:
@@ -95,12 +152,22 @@ class GoogleDriveService:
                 token_info["access_token"] = new_access_token
                 drive_info["token"] = token_info
                 tokens_data[GOOGLE_DRIVE_MCP_URL] = drive_info
-                try:
-                    with open(OAUTH_TOKENS_PATH, "w", encoding="utf-8") as f:
-                        json.dump(tokens_data, f, indent=2)
-                except Exception as e:
-                    logger.warning(f"Impossible de réécrire le tokenfile : {e}")
+                
+                # Écriture du token rafraîchi dans le fichier source et miroir dans /data
+                targets = [token_path]
+                data_token = DATA_DIR / "mcp_oauth_tokens.json"
+                if token_path != data_token:
+                    targets.append(data_token)
+                for tgt in targets:
+                    try:
+                        tgt.parent.mkdir(parents=True, exist_ok=True)
+                        with open(tgt, "w", encoding="utf-8") as f:
+                            json.dump(tokens_data, f, indent=2)
+                    except Exception as e:
+                        logger.warning(f"Impossible de réécrire le tokenfile {tgt} : {e}")
                 return new_access_token
+            else:
+                logger.warning(f"Erreur rafraîchissement OAuth Google ({refresh_resp.status_code}): {refresh_resp.text}")
 
         if access_token:
             return access_token

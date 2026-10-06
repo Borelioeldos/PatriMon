@@ -73,8 +73,27 @@ export default function DriveSyncModal({ isOpen, onClose, onSyncSuccess }) {
     }
   };
 
+  const [uploadingTokens, setUploadingTokens] = useState(false);
+
+  const handleUploadTokens = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setUploadingTokens(true);
+      setError(null);
+      await api.uploadDriveTokens(file);
+      await loadData();
+    } catch (err) {
+      setError(err.message || "Erreur lors de l'enregistrement du fichier de jetons");
+    } finally {
+      setUploadingTokens(false);
+      e.target.value = '';
+    }
+  };
+
   if (!isOpen) return null;
 
+  const isConnected = treeData?.connected !== false && !error?.includes('jetons');
   const categories = treeData?.categories || {};
   const bourso = categories.bourso || { files: [], total: 0, pending: 0 };
   const revolut = categories.revolut || { files: [], total: 0, pending: 0 };
@@ -99,9 +118,13 @@ export default function DriveSyncModal({ isOpen, onClose, onSyncSuccess }) {
                 <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white tracking-tight">
                   Google Drive Bourse & Investissements
                 </h2>
-                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/25 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Connecté Cloud
+                <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border flex items-center gap-1 ${
+                  isConnected
+                    ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/25'
+                    : 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/25'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                  {isConnected ? 'Connecté Cloud' : 'Jetons requis'}
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
@@ -154,9 +177,15 @@ export default function DriveSyncModal({ isOpen, onClose, onSyncSuccess }) {
         {/* Content Body */}
         <div className="p-5 sm:p-6 overflow-y-auto space-y-5 flex-1 custom-scrollbar">
           {error && (
-            <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-3">
-              <AlertCircle className="w-5 h-5 flex-shrink-0" />
-              <span>{error}</span>
+            <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                <span>{error}</span>
+              </div>
+              <label className="cursor-pointer px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold flex items-center gap-1.5 self-start sm:self-auto transition-all shadow-sm">
+                <span>{uploadingTokens ? "Importation..." : "Téléverser mcp_oauth_tokens.json"}</span>
+                <input type="file" accept=".json" onChange={handleUploadTokens} className="hidden" disabled={uploadingTokens} />
+              </label>
             </div>
           )}
 

@@ -261,6 +261,16 @@ export const api = {
   },
 
   // ─── Google Drive Bourse & Investissements ───
+  async getDriveStatus() {
+    return request('/google-drive/status', {}, "Erreur récupération état Drive");
+  },
+
+  async uploadDriveTokens(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    return request('/google-drive/tokens', { method: 'POST', body: formData }, "Erreur téléversement jetons");
+  },
+
   async getDriveTree() {
     return request('/google-drive/tree', {}, "Erreur récupération arborescence Google Drive");
   },
