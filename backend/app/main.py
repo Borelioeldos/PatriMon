@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -43,6 +43,19 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def ingress_middleware(request: Request, call_next):
+    """
+    Support natif du reverse-proxy Ingress de Home Assistant.
+    Si Home Assistant transmet l'en-tête X-Ingress-Path, on adapte root_path
+    pour que la documentation OpenAPI et les redirections soient cohérentes.
+    """
+    ingress_path = request.headers.get("X-Ingress-Path")
+    if ingress_path:
+        request.scope["root_path"] = ingress_path
+    return await call_next(request)
 
 # Inclusion des routeurs
 app.include_router(portfolio.router, prefix="/api")

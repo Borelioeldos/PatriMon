@@ -7,7 +7,8 @@ FROM node:20-alpine AS frontend-build
 RUN apk add --no-cache git
 
 WORKDIR /build
-RUN git clone https://github.com/Borelioeldos/PatriMon.git repo
+ARG BUILD_VERSION="1.0.1"
+RUN git clone --depth 1 -b main https://github.com/Borelioeldos/PatriMon.git repo
 
 WORKDIR /build/repo/frontend
 RUN npm ci --no-audit

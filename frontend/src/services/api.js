@@ -1,10 +1,24 @@
-const API_BASE = '/api';
+/**
+ * Détermine dynamiquement la base d'URL de l'API.
+ * - En mode Ingress Home Assistant, pathname est "/api/hassio_ingress/<token>/"
+ *   -> l'URL API devient "/api/hassio_ingress/<token>/api"
+ * - En accès direct (ex: http://<IP>:8000 ou dev 5173), pathname est "/"
+ *   -> l'URL API reste "/api"
+ */
+export function getApiBase() {
+  if (typeof window === 'undefined' || !window.location) {
+    return '/api';
+  }
+  const pathname = window.location.pathname.replace(/\/+$/, '');
+  return pathname ? `${pathname}/api` : '/api';
+}
 
 /**
  * Helper générique d'appel API avec gestion centralisée des erreurs FastAPI (detail).
  */
 async function request(endpoint, options = {}, defaultError = "Une erreur est survenue") {
-  const url = endpoint.startsWith('http') ? endpoint : `${API_BASE}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+  const apiBase = getApiBase();
+  const url = endpoint.startsWith('http') ? endpoint : `${apiBase}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
   const config = { ...options };
 
   // Sérialisation JSON automatique sauf si FormData

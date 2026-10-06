@@ -1,7 +1,7 @@
 # ─── Configuration Module Complémentaire Home Assistant (Local Add-on) ───
 name: "PatriMon"
 description: "Suivi de patrimoine personnel intelligent, temps réel et 100% souverain"
-version: "1.0.0"
+version: "1.0.1"
 slug: "patrimon"
 url: "https://github.com/Borelioeldos/PatriMon"
 arch:
@@ -13,14 +13,15 @@ arch:
 startup: application
 boot: auto
 init: false
-webui: "http://[HOST]:[PORT:8000]"
-ports:
-  8000/tcp: 8000
-ports_description:
-  8000/tcp: "Interface Web & API PatriMon"
+ingress: true
+ingress_port: 8000
 panel_icon: "mdi:chart-line"
 panel_title: "PatriMon"
 panel_admin: false
+ports:
+  8000/tcp: 8000
+ports_description:
+  8000/tcp: "Interface Web & API PatriMon (accès direct)"
 map:
   - share:rw
   - config:rw
