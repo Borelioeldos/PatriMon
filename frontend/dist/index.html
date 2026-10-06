@@ -12,6 +12,13 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+      // Support Home Assistant Ingress : garantit que l'URL se termine par '/'
+      // pour que les assets relatifs (./assets/...) soient correctement résolus par le navigateur.
+      if (window.location.pathname.startsWith('/api/hassio_ingress') && !window.location.pathname.endsWith('/')) {
+        window.location.replace(window.location.pathname + '/' + window.location.search);
+      }
+    </script>
     <script type="module" crossorigin src="./assets/index-b_lp6Nqt.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-eKbyW7_9.css">
   </head>
