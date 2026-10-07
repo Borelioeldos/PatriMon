@@ -13,7 +13,7 @@ import re
 from typing import Dict, Any, List, Optional
 import httpx
 import jwt
-from sqlmodel import Session, select
+from sqlmodel import Session, select, desc
 
 from app.models import BankConnection, BankAccountMapping, Account, AccountType, Transaction, TransactionType
 from app.config import OPEN_BANKING_CONFIG_PATH, BASE_DIR
@@ -99,19 +99,35 @@ class OpenBankingService:
             return ""
 
     def _load_config(self):
-        """Charge la configuration depuis open_banking_config.json si existant."""
+        """Charge la configuration depuis open_banking_config.json (avec miroir persistant Home Assistant)."""
+        ha_path = Path("/config/patrimon/open_banking_config.json")
         legacy_path = BASE_DIR / "open_banking_config.json"
+
+        # 1. Si présent dans /config/patrimon/ (persistance HA OS), synchroniser vers CONFIG_FILE_PATH
+        if ha_path.exists() and not CONFIG_FILE_PATH.exists():
+            try:
+                import shutil
+                CONFIG_FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(ha_path, CONFIG_FILE_PATH)
+                logger.info(f"Restauration config Open Banking depuis HA: {ha_path} -> {CONFIG_FILE_PATH}")
+            except Exception as e:
+                logger.warning(f"Impossible de copier {ha_path}: {e}")
+
+        # 2. Migration depuis legacy_path si nécessaire
         if not CONFIG_FILE_PATH.exists() and legacy_path.exists() and CONFIG_FILE_PATH != legacy_path:
             try:
                 import shutil
+                CONFIG_FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(legacy_path, CONFIG_FILE_PATH)
                 logger.info(f"Migration de configuration Open Banking: {legacy_path} -> {CONFIG_FILE_PATH}")
             except Exception as e:
                 logger.warning(f"Impossible de migrer {legacy_path}: {e}")
 
-        if CONFIG_FILE_PATH.exists():
+        # 3. Chargement depuis le meilleur chemin disponible
+        src_path = CONFIG_FILE_PATH if CONFIG_FILE_PATH.exists() else (ha_path if ha_path.exists() else None)
+        if src_path and src_path.exists():
             try:
-                with open(CONFIG_FILE_PATH, "r", encoding="utf-8") as f:
+                with open(src_path, "r", encoding="utf-8") as f:
                     cfg = json.load(f)
                     self.application_id = cfg.get("application_id", self.application_id)
                     self.private_key = cfg.get("private_key", self.private_key)
@@ -121,20 +137,30 @@ class OpenBankingService:
                 if not self.public_key and self.private_key:
                     self.public_key = self.get_public_key()
             except Exception as e:
-                logger.warning(f"Impossible de charger open_banking_config.json: {e}")
+                logger.warning(f"Impossible de charger {src_path}: {e}")
 
     def _save_config(self):
-        """Sauvegarde la configuration dans open_banking_config.json."""
+        """Sauvegarde la configuration dans CONFIG_FILE_PATH et en miroir sur /config/patrimon/."""
         try:
             pub_key = self.get_public_key()
+            data = {
+                "provider": self.provider,
+                "application_id": self.application_id,
+                "private_key": self.private_key,
+                "public_key": pub_key,
+                "simulation_mode": self.is_simulation_mode,
+            }
+            CONFIG_FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
             with open(CONFIG_FILE_PATH, "w", encoding="utf-8") as f:
-                json.dump({
-                    "provider": self.provider,
-                    "application_id": self.application_id,
-                    "private_key": self.private_key,
-                    "public_key": pub_key,
-                    "simulation_mode": self.is_simulation_mode,
-                }, f, indent=2)
+                json.dump(data, f, indent=2)
+
+            ha_path = Path("/config/patrimon/open_banking_config.json")
+            try:
+                ha_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(ha_path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2)
+            except Exception:
+                pass
         except Exception as e:
             logger.warning(f"Impossible de sauvegarder open_banking_config.json: {e}")
 
@@ -1272,10 +1298,21 @@ class OpenBankingService:
 
         for m in mappings:
             acc = session.get(Account, m.patrimon_account_id)
-            if not acc:
-                continue
-
             conn = session.get(BankConnection, m.connection_id)
+            if not acc:
+                inst_name = conn.institution_name if conn else "Banque"
+                acc = self._get_or_create_account(
+                    session=session,
+                    institution_name=inst_name,
+                    account_name=m.name or f"{inst_name} - Compte",
+                    initial_balance=m.last_balance or 0.0,
+                    iban=m.iban or "",
+                    currency="EUR",
+                )
+                m.patrimon_account_id = acc.id
+                session.add(m)
+                session.commit()
+
             raw_txs_to_process = []
 
             if conn and conn.is_simulation:
@@ -1283,52 +1320,102 @@ class OpenBankingService:
             elif not self.is_simulation_mode and conn and not conn.is_simulation and jwt_token:
                 try:
                     headers = {"Authorization": f"Bearer {jwt_token}"}
-                    async with httpx.AsyncClient(timeout=20.0) as client:
-                        resp = await client.get(
-                            f"{ENABLE_BANKING_API_BASE}/accounts/{m.external_account_id}/transactions",
-                            headers=headers,
-                        )
-                        if resp.status_code == 200:
-                            data = resp.json() or {}
-                            tx_list = data.get("transactions") or []
-                            for t in tx_list:
-                                ext_id = t.get("entry_reference") or t.get("transaction_id") or t.get("internal_transaction_id")
-                                amt_dict = t.get("transaction_amount") or {}
-                                amt_val = float(amt_dict.get("amount", 0.0))
-                                cur = amt_dict.get("currency") or "EUR"
-                                dt_str = t.get("booking_date") or t.get("value_date") or str(date.today())
+                    from datetime import timedelta
 
-                                indicator = (t.get("credit_debit_indicator") or "").upper()
-                                if indicator == "DBIT" and amt_val > 0:
-                                    amt_val = -amt_val
-                                elif indicator == "CRDT" and amt_val < 0:
-                                    amt_val = abs(amt_val)
+                    # 1. Plage dynamique date_from (max 88 jours norme PSD2)
+                    last_tx = session.exec(
+                        select(Transaction)
+                        .where(Transaction.account_id == acc.id)
+                        .order_by(desc(Transaction.transaction_date))
+                    ).first()
 
-                                rem_info = t.get("remittance_information")
-                                rem_str = " ".join(rem_info) if isinstance(rem_info, list) else str(rem_info or "")
-                                creditor = (t.get("creditor") or {}).get("name", "")
-                                debtor = (t.get("debtor") or {}).get("name", "")
+                    min_allowed = date.today() - timedelta(days=88)
+                    if last_tx and last_tx.transaction_date:
+                        safe_date = last_tx.transaction_date - timedelta(days=14)
+                        target_date = max(safe_date, min_allowed)
+                    else:
+                        target_date = min_allowed
+                    target_date_from = target_date.strftime("%Y-%m-%d")
 
-                                # Si identifiant manquant, générer une empreinte unique avec signature des données (R6)
-                                if not ext_id:
-                                    import hashlib
-                                    sig = f"{dt_str}_{amt_val}_{rem_str}_{creditor}_{debtor}"
-                                    h = hashlib.sha256(sig.encode('utf-8')).hexdigest()[:12]
-                                    ext_id = f"eb_{dt_str}_{abs(amt_val)}_{h}"
+                    async with httpx.AsyncClient(timeout=25.0) as client:
+                        all_tx_items = []
 
-                                # Préférer le nom explicite du commerçant / tiers si disponible
-                                party_name = (debtor if amt_val > 0 and debtor else creditor) or rem_str or "Opération bancaire"
+                        # 2. Transactions comptabilisées (BOOK) avec pagination continuation_key
+                        current_url = f"{ENABLE_BANKING_API_BASE}/accounts/{m.external_account_id}/transactions?date_from={target_date_from}"
+                        page_count = 0
+                        while current_url and page_count < 10:
+                            page_count += 1
+                            resp = await client.get(current_url, headers=headers)
+                            if resp.status_code == 200:
+                                d = resp.json() or {}
+                                txs_page = d.get("transactions") or []
+                                all_tx_items.extend(txs_page)
+                                cont_key = d.get("continuation_key")
+                                if cont_key:
+                                    current_url = f"{ENABLE_BANKING_API_BASE}/accounts/{m.external_account_id}/transactions?continuation_key={cont_key}"
+                                else:
+                                    break
+                            elif resp.status_code == 422:
+                                # Fallback sans filtre date si rejeté par l'ASPSP
+                                fallback_resp = await client.get(
+                                    f"{ENABLE_BANKING_API_BASE}/accounts/{m.external_account_id}/transactions",
+                                    headers=headers
+                                )
+                                if fallback_resp.status_code == 200:
+                                    all_tx_items.extend((fallback_resp.json() or {}).get("transactions") or [])
+                                break
+                            else:
+                                break
 
-                                raw_txs_to_process.append({
-                                    "external_id": str(ext_id),
+                        # 3. Opérations en cours / autorisations carte (PDNG)
+                        try:
+                            pdng_resp = await client.get(
+                                f"{ENABLE_BANKING_API_BASE}/accounts/{m.external_account_id}/transactions?transaction_status=PDNG",
+                                headers=headers
+                            )
+                            if pdng_resp.status_code == 200:
+                                pdng_items = (pdng_resp.json() or {}).get("transactions") or []
+                                all_tx_items.extend(pdng_items)
+                        except Exception as e:
+                            logger.debug(f"PDNG non supporté pour {m.external_account_id}: {e}")
 
-                                    "amount": amt_val,
-                                    "currency": cur,
-                                    "date": dt_str,
-                                    "raw_label": party_name,
-                                    "creditor": creditor,
-                                    "debtor": debtor,
-                                })
+                        for t in all_tx_items:
+                            ext_id = t.get("entry_reference") or t.get("transaction_id") or t.get("internal_transaction_id")
+                            amt_dict = t.get("transaction_amount") or {}
+                            amt_val = float(amt_dict.get("amount", 0.0))
+                            cur = amt_dict.get("currency") or "EUR"
+                            dt_str = t.get("booking_date") or t.get("value_date") or t.get("transaction_date") or str(date.today())
+
+                            indicator = (t.get("credit_debit_indicator") or "").upper()
+                            if indicator == "DBIT" and amt_val > 0:
+                                amt_val = -amt_val
+                            elif indicator == "CRDT" and amt_val < 0:
+                                amt_val = abs(amt_val)
+
+                            rem_info = t.get("remittance_information")
+                            rem_str = " ".join(rem_info) if isinstance(rem_info, list) else str(rem_info or "")
+                            creditor = (t.get("creditor") or {}).get("name", "")
+                            debtor = (t.get("debtor") or {}).get("name", "")
+
+                            # Si identifiant manquant, générer une empreinte unique avec signature des données (R6)
+                            if not ext_id:
+                                import hashlib
+                                sig = f"{dt_str}_{amt_val}_{rem_str}_{creditor}_{debtor}"
+                                h = hashlib.sha256(sig.encode('utf-8')).hexdigest()[:12]
+                                ext_id = f"eb_{dt_str}_{abs(amt_val)}_{h}"
+
+                            # Préférer le nom explicite du commerçant / tiers si disponible
+                            party_name = (debtor if amt_val > 0 and debtor else creditor) or rem_str or "Opération bancaire"
+
+                            raw_txs_to_process.append({
+                                "external_id": str(ext_id),
+                                "amount": amt_val,
+                                "currency": cur,
+                                "date": dt_str,
+                                "raw_label": party_name,
+                                "creditor": creditor,
+                                "debtor": debtor,
+                            })
                 except Exception as e:
                     logger.warning(f"Erreur synchro transactions Enable Banking ({m.external_account_id}): {e}")
 
@@ -1430,10 +1517,21 @@ class OpenBankingService:
 
         for m in mappings:
             acc = session.get(Account, m.patrimon_account_id)
-            if not acc:
-                continue
-
             conn = session.get(BankConnection, m.connection_id)
+            if not acc:
+                inst_name = conn.institution_name if conn else "Banque"
+                acc = self._get_or_create_account(
+                    session=session,
+                    institution_name=inst_name,
+                    account_name=m.name or f"{inst_name} - Compte",
+                    initial_balance=m.last_balance or 0.0,
+                    iban=m.iban or "",
+                    currency="EUR",
+                )
+                m.patrimon_account_id = acc.id
+                session.add(m)
+                session.commit()
+
             new_balance = m.last_balance or acc.cash_balance
 
             if conn and conn.is_simulation:

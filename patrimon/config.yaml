@@ -1,7 +1,7 @@
 # ─── Configuration Module Complémentaire Home Assistant (Local Add-on) ───
 name: "PatriMon"
 description: "Suivi de patrimoine personnel intelligent, temps réel et 100% souverain"
-version: "1.0.3"
+version: "1.0.4"
 slug: "patrimon"
 url: "https://github.com/Borelioeldos/PatriMon"
 arch:

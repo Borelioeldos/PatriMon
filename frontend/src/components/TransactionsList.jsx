@@ -71,7 +71,7 @@ export default function TransactionsList({
     setIsSyncing(true);
     try {
       const res = await api.syncBankBalances();
-      fetchTransactions();
+      await fetchTransactions();
       if (onTransactionDeleted) onTransactionDeleted();
       alert(res.message || "Comptes et transactions synchronisés !");
     } catch (err) {
