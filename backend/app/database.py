@@ -60,6 +60,18 @@ def init_db():
         import logging
         logging.getLogger("database").warning(f"Note migration base de données: {e}")
 
+    # Nettoyage automatique des doublons DSP2 au démarrage
+    try:
+        with Session(engine) as s:
+            from app.services.open_banking_service import open_banking_service
+            cleaned = open_banking_service.cleanup_duplicate_transactions(s)
+            if cleaned > 0:
+                import logging
+                logging.getLogger("database").info(f"Nettoyage DSP2 au démarrage : {cleaned} doublon(s) supprimé(s).")
+    except Exception as e:
+        import logging
+        logging.getLogger("database").warning(f"Note nettoyage doublons DSP2 au démarrage: {e}")
+
 
 
 def get_session():

@@ -260,6 +260,10 @@ export const api = {
     return request('/open-banking/sync-transactions', { method: 'POST' }, "Erreur synchronisation transactions");
   },
 
+  async cleanupDuplicateTransactions() {
+    return request('/open-banking/cleanup-duplicates', { method: 'POST' }, "Erreur nettoyage des doublons");
+  },
+
   // ─── Google Drive Bourse & Investissements ───
   async getDriveStatus() {
     return request('/google-drive/status', {}, "Erreur récupération état Drive");

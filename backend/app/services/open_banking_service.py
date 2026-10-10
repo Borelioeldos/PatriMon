@@ -7,7 +7,7 @@ import os
 import json
 import logging
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 from pathlib import Path
 import re
 from typing import Dict, Any, List, Optional
@@ -1279,15 +1279,303 @@ class OpenBankingService:
 
         return sim_txs
 
+    @classmethod
+    def are_transactions_matching(
+        cls,
+        tx1_amount: float,
+        tx1_type: Any,
+        tx1_date: date,
+        tx1_label: str,
+        tx2_amount: float,
+        tx2_type: Any,
+        tx2_date: date,
+        tx2_label: str,
+        max_days: int = 4,
+    ) -> bool:
+        """
+        Détermine si deux transactions bancaires correspondent à la même opération financière.
+        Prend en compte l'écart de date (décalage autorisation vs débit carte/SEPA),
+        les montants identiques, et la proximité/similarité des libellés marchands.
+        """
+        # 1. Montants identiques à 1 centime près
+        if abs(float(tx1_amount) - float(tx2_amount)) >= 0.009:
+            return False
+
+        # 2. Type identique (ex: WITHDRAWAL / DEPOSIT)
+        t1_str = tx1_type.value if hasattr(tx1_type, "value") else str(tx1_type).upper()
+        t2_str = tx2_type.value if hasattr(tx2_type, "value") else str(tx2_type).upper()
+        if t1_str != t2_str:
+            return False
+
+        # 3. Écart de date inférieur ou égal au seuil autorisé
+        if abs((tx1_date - tx2_date).days) > max_days:
+            return False
+
+        # 4. Similarité des libellés marchands
+        l1 = (tx1_label or "").strip().lower()
+        l2 = (tx2_label or "").strip().lower()
+        if not l1 or not l2 or l1 == l2:
+            return True
+
+        if l1 in l2 or l2 in l1:
+            return True
+
+        # Comparaison des libellés nettoyés par le moteur d'enrichissement
+        cl1 = transaction_enricher.clean_label(tx1_label).lower()
+        cl2 = transaction_enricher.clean_label(tx2_label).lower()
+        if cl1 and cl2 and (cl1 == cl2 or cl1 in cl2 or cl2 in cl1):
+            return True
+
+        # Recouvrement de mots signifiants (hors mots-clés bancaires génériques)
+        stop_words = {
+            "carte", "paiement", "achat", "cb", "prlv", "prelevement", "sepa", "vir",
+            "virement", "recu", "emis", "facture", "cotis", "vers", "pour", "compte",
+            "ref", "mdt", "ech", "lib", "paris", "france", "lyon", "marseille",
+            "fra", "eur", "date", "numero", "operation", "bancaire", "comptabilisee"
+        }
+        tokens1 = {w for w in re.findall(r"[a-z0-9]{3,}", l1) if w not in stop_words and not w.isdigit()}
+        tokens2 = {w for w in re.findall(r"[a-z0-9]{3,}", l2) if w not in stop_words and not w.isdigit()}
+        if tokens1 and tokens2 and (tokens1 & tokens2):
+            return True
+
+        return False
+
+    def cleanup_duplicate_transactions(self, session: Session) -> int:
+        """
+        Détecte et supprime exhaustivement les doublons de transactions bancaires générés par la synchronisation DSP2 :
+        1. Doublons inter-comptes avec même identifiant externe (ex: BoursoBank compte courant vs compte carte).
+        2. Doublons intra-compte avec même identifiant externe.
+        3. Doublons inter-comptes entre compte courant et compte carte miroir de la même banque.
+        4. Opérations temporaires 'eb_' dont la version comptabilisée officielle existe.
+        5. Doublons multiples d'opérations temporaires 'eb_' entre elles.
+        """
+        deleted_count = 0
+        deleted_ids = set()
+
+        all_accounts = {a.id: a for a in session.exec(select(Account)).all()}
+        all_mappings = session.exec(select(BankAccountMapping)).all()
+        conn_to_accounts = {}
+        for m in all_mappings:
+            conn_to_accounts.setdefault(m.connection_id, set()).add(m.patrimon_account_id)
+
+        def is_card_account(acc_id: int) -> bool:
+            acc = all_accounts.get(acc_id)
+            if not acc:
+                return False
+            name = (acc.name or "").lower()
+            mapping = next((m for m in all_mappings if m.patrimon_account_id == acc_id), None)
+            m_iban = (mapping.iban or "") if mapping else ""
+            if "carte" in name or "card" in name:
+                return True
+            if m_iban and len(m_iban) < 20 and not m_iban.startswith("FR"):
+                return True
+            return False
+
+        # ─── ÉTAPE 1 : Doublons avec le même external_id (inter-comptes & intra-compte) ───
+        all_ext_txs = session.exec(
+            select(Transaction)
+            .where(Transaction.external_id.is_not(None))
+            .where(Transaction.external_id != "")
+            .order_by(Transaction.id.asc())
+        ).all()
+
+        ext_id_groups = {}
+        for tx in all_ext_txs:
+            ext_id_groups.setdefault(tx.external_id, []).append(tx)
+
+        for ext_id, group in ext_id_groups.items():
+            if len(group) <= 1:
+                continue
+
+            valid_group = [t for t in group if t.id not in deleted_ids]
+            if len(valid_group) <= 1:
+                continue
+
+            # Priorité de conservation :
+            # 1. Compte principal non-carte
+            # 2. Compte avec solde réel > 0
+            # 3. Transaction la plus ancienne (id le plus bas)
+            def score_tx(t: Transaction) -> tuple:
+                is_card = is_card_account(t.account_id)
+                acc = all_accounts.get(t.account_id)
+                balance_score = 1 if (acc and acc.cash_balance != 0.0) else 0
+                return (0 if is_card else 1, balance_score, -t.id)
+
+            sorted_group = sorted(valid_group, key=score_tx, reverse=True)
+            primary_tx = sorted_group[0]
+            duplicates_to_delete = sorted_group[1:]
+
+            for dup in duplicates_to_delete:
+                acc_orig = all_accounts.get(dup.account_id)
+                acc_prim = all_accounts.get(primary_tx.account_id)
+                logger.info(
+                    f"Suppression du doublon DSP2 ID {dup.id} ({dup.name}, {dup.amount} € sur {acc_orig.name if acc_orig else dup.account_id}) "
+                    f"-> opération principale conservée ID {primary_tx.id} sur {acc_prim.name if acc_prim else primary_tx.account_id} (ext={ext_id})"
+                )
+                session.delete(dup)
+                deleted_ids.add(dup.id)
+                deleted_count += 1
+
+        # ─── ÉTAPE 2 : Doublons miroir Carte vs Compte Courant (même banque, sans même external_id) ───
+        for conn_id, acc_ids in conn_to_accounts.items():
+            if len(acc_ids) < 2:
+                continue
+            card_acc_ids = [aid for aid in acc_ids if is_card_account(aid)]
+            main_acc_ids = [aid for aid in acc_ids if not is_card_account(aid)]
+            if not card_acc_ids or not main_acc_ids:
+                continue
+
+            for c_id in card_acc_ids:
+                card_txs = session.exec(
+                    select(Transaction)
+                    .where(Transaction.account_id == c_id)
+                ).all()
+
+                for ctx in card_txs:
+                    if ctx.id in deleted_ids:
+                        continue
+
+                    cand_min = ctx.transaction_date - timedelta(days=4)
+                    cand_max = ctx.transaction_date + timedelta(days=4)
+
+                    main_matches = session.exec(
+                        select(Transaction)
+                        .where(Transaction.account_id.in_(main_acc_ids))
+                        .where(Transaction.type == ctx.type)
+                        .where(Transaction.amount >= ctx.amount - 0.009)
+                        .where(Transaction.amount <= ctx.amount + 0.009)
+                        .where(Transaction.transaction_date >= cand_min)
+                        .where(Transaction.transaction_date <= cand_max)
+                    ).all()
+
+                    matched = [
+                        m for m in main_matches
+                        if m.id not in deleted_ids and self.are_transactions_matching(
+                            ctx.amount, ctx.type, ctx.transaction_date, ctx.name,
+                            m.amount, m.type, m.transaction_date, m.name,
+                            max_days=4
+                        )
+                    ]
+
+                    if matched:
+                        logger.info(
+                            f"Suppression du doublon miroir carte ID {ctx.id} ({ctx.name}, {ctx.amount} € sur compte carte ID {c_id}) "
+                            f"-> correspondance trouvée sur compte principal ID {matched[0].account_id} (ID {matched[0].id})"
+                        )
+                        session.delete(ctx)
+                        deleted_ids.add(ctx.id)
+                        deleted_count += 1
+
+        # ─── ÉTAPE 3 : Opérations temporaires 'eb_' réconciliées avec opérations BOOK officielles ───
+        eb_txs = session.exec(
+            select(Transaction).where(Transaction.external_id.like("eb_%"))
+        ).all()
+
+        for eb in eb_txs:
+            if eb.id in deleted_ids:
+                continue
+
+            cand_min = eb.transaction_date - timedelta(days=4)
+            cand_max = eb.transaction_date + timedelta(days=4)
+
+            target_acc_ids = [eb.account_id]
+            for conn_id, acc_ids in conn_to_accounts.items():
+                if eb.account_id in acc_ids:
+                    target_acc_ids = list(acc_ids)
+                    break
+
+            booked_cands = session.exec(
+                select(Transaction)
+                .where(Transaction.account_id.in_(target_acc_ids))
+                .where(Transaction.id != eb.id)
+                .where(Transaction.type == eb.type)
+                .where(Transaction.amount >= eb.amount - 0.009)
+                .where(Transaction.amount <= eb.amount + 0.009)
+                .where(Transaction.transaction_date >= cand_min)
+                .where(Transaction.transaction_date <= cand_max)
+                .where(~Transaction.external_id.like("eb_%"))
+            ).all()
+
+            matched_booked = [
+                b for b in booked_cands
+                if b.id not in deleted_ids and self.are_transactions_matching(
+                    eb.amount, eb.type, eb.transaction_date, eb.name,
+                    b.amount, b.type, b.transaction_date, b.name,
+                    max_days=4
+                )
+            ]
+
+            if matched_booked:
+                logger.info(
+                    f"Suppression du doublon temporaire DSP2 ID {eb.id} ({eb.name}, {eb.amount} €) "
+                    f"-> opération officielle ID {matched_booked[0].id} ({matched_booked[0].external_id})"
+                )
+                session.delete(eb)
+                deleted_ids.add(eb.id)
+                deleted_count += 1
+                continue
+
+            # ─── ÉTAPE 4 : Doublons multiples d'opérations temporaires 'eb_' entre elles ───
+            other_eb_cands = session.exec(
+                select(Transaction)
+                .where(Transaction.account_id == eb.account_id)
+                .where(Transaction.id > eb.id)
+                .where(Transaction.type == eb.type)
+                .where(Transaction.amount >= eb.amount - 0.009)
+                .where(Transaction.amount <= eb.amount + 0.009)
+                .where(Transaction.transaction_date >= cand_min)
+                .where(Transaction.transaction_date <= cand_max)
+                .where(Transaction.external_id.like("eb_%"))
+            ).all()
+
+            matched_eb = [
+                o for o in other_eb_cands
+                if o.id not in deleted_ids and self.are_transactions_matching(
+                    eb.amount, eb.type, eb.transaction_date, eb.name,
+                    o.amount, o.type, o.transaction_date, o.name,
+                    max_days=4
+                )
+            ]
+
+            for m in matched_eb:
+                logger.info(
+                    f"Suppression du doublon temporaire DSP2 ID {m.id} ({m.name}, {m.amount} €) "
+                    f"-> doublon de ID {eb.id}"
+                )
+                session.delete(m)
+                deleted_ids.add(m.id)
+                deleted_count += 1
+
+        if deleted_count > 0:
+            session.commit()
+            logger.info(f"Nettoyage automatique des doublons DSP2 terminé : {deleted_count} opération(s) purgée(s).")
+
+        return deleted_count
+
     async def sync_all_transactions(self, session: Session) -> Dict[str, Any]:
         """
         Synchronise automatiquement l'historique des transactions pour tous les comptes liés.
         Tous les champs (libellé, catégorie, type, montant, devise, notes) sont remplis automatiquement.
+        Intègre une réconciliation intelligente anti-doublons entre opérations BOOK et PDNG.
         """
-        from datetime import date
-        mappings = session.exec(select(BankAccountMapping)).all()
+        from datetime import date, timedelta
+        import hashlib
+
+        # Nettoyage préventif des doublons résiduels existants
+        duplicates_purged = self.cleanup_duplicate_transactions(session)
+
+        def mapping_sort_key(m_obj):
+            a_obj = session.get(Account, m_obj.patrimon_account_id)
+            a_name = ((a_obj.name if a_obj else "") or (m_obj.name or "")).lower()
+            m_ib = m_obj.iban or ""
+            is_card = "carte" in a_name or "card" in a_name or (m_ib and len(m_ib) < 20 and not m_ib.startswith("FR"))
+            return (1 if is_card else 0, m_obj.id)
+
+        all_mappings_raw = session.exec(select(BankAccountMapping)).all()
+        mappings = sorted(all_mappings_raw, key=mapping_sort_key)
         synced_accounts = 0
         new_transactions_count = 0
+        reconciled_transactions_count = 0
 
         jwt_token = None
         if not self.is_simulation_mode and (self.application_id and self.private_key):
@@ -1299,6 +1587,8 @@ class OpenBankingService:
         for m in mappings:
             acc = session.get(Account, m.patrimon_account_id)
             conn = session.get(BankConnection, m.connection_id)
+            sibling_mappings = [sm for sm in mappings if sm.connection_id == m.connection_id and sm.id != m.id]
+            sibling_account_ids = {sm.patrimon_account_id for sm in sibling_mappings}
             if not acc:
                 inst_name = conn.institution_name if conn else "Banque"
                 acc = self._get_or_create_account(
@@ -1313,6 +1603,9 @@ class OpenBankingService:
                 session.add(m)
                 session.commit()
 
+            m_ib = m.iban or ""
+            is_card_acc = "carte" in (acc.name or "").lower() or "card" in (acc.name or "").lower() or (m_ib and len(m_ib) < 20 and not m_ib.startswith("FR"))
+
             raw_txs_to_process = []
 
             if conn and conn.is_simulation:
@@ -1320,7 +1613,6 @@ class OpenBankingService:
             elif not self.is_simulation_mode and conn and not conn.is_simulation and jwt_token:
                 try:
                     headers = {"Authorization": f"Bearer {jwt_token}"}
-                    from datetime import timedelta
 
                     # 1. Plage dynamique date_from (max 88 jours norme PSD2)
                     last_tx = session.exec(
@@ -1349,6 +1641,8 @@ class OpenBankingService:
                             if resp.status_code == 200:
                                 d = resp.json() or {}
                                 txs_page = d.get("transactions") or []
+                                for item in txs_page:
+                                    item["_source_status"] = "BOOK"
                                 all_tx_items.extend(txs_page)
                                 cont_key = d.get("continuation_key")
                                 if cont_key:
@@ -1362,7 +1656,10 @@ class OpenBankingService:
                                     headers=headers
                                 )
                                 if fallback_resp.status_code == 200:
-                                    all_tx_items.extend((fallback_resp.json() or {}).get("transactions") or [])
+                                    fallback_items = (fallback_resp.json() or {}).get("transactions") or []
+                                    for item in fallback_items:
+                                        item["_source_status"] = "BOOK"
+                                    all_tx_items.extend(fallback_items)
                                 break
                             else:
                                 break
@@ -1375,6 +1672,8 @@ class OpenBankingService:
                             )
                             if pdng_resp.status_code == 200:
                                 pdng_items = (pdng_resp.json() or {}).get("transactions") or []
+                                for item in pdng_items:
+                                    item["_source_status"] = "PDNG"
                                 all_tx_items.extend(pdng_items)
                         except Exception as e:
                             logger.debug(f"PDNG non supporté pour {m.external_account_id}: {e}")
@@ -1397,15 +1696,18 @@ class OpenBankingService:
                             creditor = (t.get("creditor") or {}).get("name", "")
                             debtor = (t.get("debtor") or {}).get("name", "")
 
-                            # Si identifiant manquant, générer une empreinte unique avec signature des données (R6)
-                            if not ext_id:
-                                import hashlib
-                                sig = f"{dt_str}_{amt_val}_{rem_str}_{creditor}_{debtor}"
-                                h = hashlib.sha256(sig.encode('utf-8')).hexdigest()[:12]
-                                ext_id = f"eb_{dt_str}_{abs(amt_val)}_{h}"
-
                             # Préférer le nom explicite du commerçant / tiers si disponible
                             party_name = (debtor if amt_val > 0 and debtor else creditor) or rem_str or "Opération bancaire"
+                            clean_party = transaction_enricher.clean_label(party_name)
+
+                            is_pending = (t.get("_source_status") == "PDNG") or (t.get("status") or "").lower() == "pending" or (t.get("transaction_status") or "").upper() == "PDNG"
+
+                            # Si identifiant manquant, générer une empreinte unique stable basée sur le commerçant nettoyé (R6)
+                            if not ext_id:
+                                norm_name = re.sub(r"[^a-zA-Z0-9]", "", clean_party.lower())[:20] or "op"
+                                sig = f"{m.external_account_id}_{dt_str}_{abs(amt_val):.2f}_{norm_name}"
+                                h = hashlib.sha256(sig.encode('utf-8')).hexdigest()[:12]
+                                ext_id = f"eb_{dt_str}_{abs(amt_val):.2f}_{h}"
 
                             raw_txs_to_process.append({
                                 "external_id": str(ext_id),
@@ -1413,27 +1715,55 @@ class OpenBankingService:
                                 "currency": cur,
                                 "date": dt_str,
                                 "raw_label": party_name,
+                                "clean_name": clean_party,
                                 "creditor": creditor,
                                 "debtor": debtor,
+                                "is_pending": is_pending,
+                                "is_synthetic": str(ext_id).startswith("eb_"),
                             })
                 except Exception as e:
                     logger.warning(f"Erreur synchro transactions Enable Banking ({m.external_account_id}): {e}")
 
-            # Traitement et enrichissement automatique de chaque transaction
+            # 4. Déduplication intra-batch : si un élément PDNG correspond à un élément BOOK dans le même lot, éliminer le PDNG
+            filtered_raw_txs = []
+            seen_ext_ids = set()
+            booked_batch = [item for item in raw_txs_to_process if not item.get("is_pending") and not item.get("is_synthetic")]
+
             for item in raw_txs_to_process:
-                ext_id = item["external_id"]
-                # Vérifier si déjà enregistrée (déduplication)
-                existing = session.exec(
-                    select(Transaction)
-                    .where(Transaction.account_id == acc.id)
-                    .where(Transaction.external_id == ext_id)
-                ).first()
-                if existing:
+                ext = item["external_id"]
+                if ext in seen_ext_ids:
                     continue
 
+                if item.get("is_pending") or item.get("is_synthetic"):
+                    try:
+                        item_dt = datetime.strptime(str(item["date"])[:10], "%Y-%m-%d").date()
+                    except Exception:
+                        item_dt = date.today()
+
+                    is_covered = any(
+                        self.are_transactions_matching(
+                            item["amount"], "WITHDRAWAL" if item["amount"] < 0 else "DEPOSIT", item_dt, item["raw_label"],
+                            b["amount"], "WITHDRAWAL" if b["amount"] < 0 else "DEPOSIT",
+                            datetime.strptime(str(b["date"])[:10], "%Y-%m-%d").date(), b["raw_label"],
+                            max_days=3
+                        )
+                        for b in booked_batch
+                    )
+                    if is_covered:
+                        continue
+
+                seen_ext_ids.add(ext)
+                filtered_raw_txs.append(item)
+
+            # 5. Traitement et réconciliation automatique avec la base de données
+            for item in filtered_raw_txs:
+                ext_id = item["external_id"]
                 raw_amt = float(item["amount"])
                 abs_amount = round(abs(raw_amt), 2)
                 raw_label = item.get("raw_label", "")
+                clean_name = item.get("clean_name") or transaction_enricher.clean_label(raw_label)
+                is_synthetic = item.get("is_synthetic", False)
+                is_pending = item.get("is_pending", False)
 
                 # Date
                 dt_raw = item.get("date")
@@ -1445,10 +1775,123 @@ class OpenBankingService:
                 else:
                     tx_date_val = date.today()
 
-                # Déduction automatique du type et de la catégorie
                 tx_type, auto_cat = transaction_enricher.deduce_type_and_category(raw_amt, raw_label)
-                clean_name = transaction_enricher.clean_label(raw_label)
 
+                # Étape 1 : Vérification par identifiant exact sur ce compte
+                existing = session.exec(
+                    select(Transaction)
+                    .where(Transaction.account_id == acc.id)
+                    .where(Transaction.external_id == ext_id)
+                ).first()
+                if existing:
+                    # Mise à jour si l'existant était temporaire et que l'opération est désormais confirmée
+                    if not is_pending and (existing.external_id.startswith("eb_") or "en cours" in (existing.notes or "").lower()):
+                        existing.name = clean_name or raw_label
+                        existing.transaction_date = tx_date_val
+                        existing.notes = f"Synchronisé automatiquement via Open Banking{f' ({raw_label})' if clean_name != raw_label else ''}"
+                        session.add(existing)
+                    continue
+
+                # Étape 1b : Vérification si déjà présent sur un compte lié (compte principal vs compte carte)
+                if sibling_account_ids and ext_id and not is_synthetic:
+                    existing_sibling = session.exec(
+                        select(Transaction)
+                        .where(Transaction.account_id.in_(sibling_account_ids))
+                        .where(Transaction.external_id == ext_id)
+                    ).first()
+                    if existing_sibling:
+                        if is_card_acc:
+                            logger.info(
+                                f"Opération carte {ext_id} ({raw_label}) déjà enregistrée sur le compte principal ID {existing_sibling.account_id}, ignorée sur la carte ID {acc.id}"
+                            )
+                            continue
+                        else:
+                            logger.info(
+                                f"Réassignation de la transaction {ext_id} ({raw_label}) du compte carte ID {existing_sibling.account_id} vers le compte principal ID {acc.id}"
+                            )
+                            existing_sibling.account_id = acc.id
+                            session.add(existing_sibling)
+                            continue
+
+                # Étape 2 : Réconciliation avec des opérations existantes sur ce compte (+/- 4 jours)
+                cand_min = tx_date_val - timedelta(days=4)
+                cand_max = tx_date_val + timedelta(days=4)
+
+                # Si compte carte, vérifier si le compte principal a déjà cette opération
+                if is_card_acc and sibling_account_ids:
+                    sibling_candidates = session.exec(
+                        select(Transaction)
+                        .where(Transaction.account_id.in_(sibling_account_ids))
+                        .where(Transaction.type == tx_type)
+                        .where(Transaction.amount >= abs_amount - 0.009)
+                        .where(Transaction.amount <= abs_amount + 0.009)
+                        .where(Transaction.transaction_date >= cand_min)
+                        .where(Transaction.transaction_date <= cand_max)
+                    ).all()
+                    if any(
+                        self.are_transactions_matching(
+                            s.amount, s.type, s.transaction_date, s.name,
+                            abs_amount, tx_type, tx_date_val, raw_label,
+                            max_days=4
+                        )
+                        for s in sibling_candidates
+                    ):
+                        logger.info(
+                            f"Opération carte {raw_label} ({abs_amount} €) déjà présente sur le compte principal, ignorée sur la carte ID {acc.id}"
+                        )
+                        continue
+
+                db_candidates = session.exec(
+                    select(Transaction)
+                    .where(Transaction.account_id == acc.id)
+                    .where(Transaction.type == tx_type)
+                    .where(Transaction.amount >= abs_amount - 0.009)
+                    .where(Transaction.amount <= abs_amount + 0.009)
+                    .where(Transaction.transaction_date >= cand_min)
+                    .where(Transaction.transaction_date <= cand_max)
+                ).all()
+
+                matched_candidates = [
+                    c for c in db_candidates
+                    if self.are_transactions_matching(
+                        c.amount, c.type, c.transaction_date, c.name,
+                        abs_amount, tx_type, tx_date_val, raw_label,
+                        max_days=4
+                    )
+                ]
+
+                if matched_candidates:
+                    # Cas A : L'opération entrante est COMPTABILISÉE (BOOK avec identifiant officiel)
+                    if not is_synthetic and not is_pending:
+                        synthetic_cands = [c for c in matched_candidates if (c.external_id or "").startswith("eb_")]
+                        if synthetic_cands:
+                            # Réconcilier la transaction temporaire existante en lui assignant l'identifiant officiel
+                            primary_cand = synthetic_cands[0]
+                            logger.info(
+                                f"Réconciliation DSP2 : mise à jour ID {primary_cand.id} ({primary_cand.name}) "
+                                f"de '{primary_cand.external_id}' vers référence officielle '{ext_id}'"
+                            )
+                            primary_cand.external_id = ext_id
+                            primary_cand.name = clean_name or raw_label
+                            primary_cand.transaction_date = tx_date_val
+                            primary_cand.notes = f"Synchronisé automatiquement via Open Banking{f' ({raw_label})' if clean_name != raw_label else ''}"
+                            session.add(primary_cand)
+                            reconciled_transactions_count += 1
+
+                            # Purger tout autre doublon temporaire résiduel pour cette opération
+                            for extra in synthetic_cands[1:]:
+                                session.delete(extra)
+                            continue
+                        else:
+                            # Déjà présente en version comptabilisée dans la base
+                            continue
+
+                    # Cas B : L'opération entrante est EN COURS (PDNG) ou avec ID synthétique
+                    else:
+                        # Si une version officielle ou temporaire existe déjà en base, ignorer pour éviter le doublon
+                        continue
+
+                # Étape 3 : Nouvelle transaction authentique
                 curr = item.get("currency") or "EUR"
                 from app.services.market_service import market_service
                 rate = market_service.get_eur_rate(curr)
@@ -1486,6 +1929,8 @@ class OpenBankingService:
             "success": True,
             "accounts_processed": synced_accounts,
             "new_transactions_imported": new_transactions_count,
+            "reconciled_transactions": reconciled_transactions_count,
+            "duplicates_purged": duplicates_purged,
         }
 
     async def sync_all_balances(self, session: Session) -> Dict[str, Any]:
@@ -1601,13 +2046,26 @@ class OpenBankingService:
             logger.warning(f"Erreur lors de la synchronisation conjointe des transactions: {e}")
 
         new_tx_count = tx_stats.get("new_transactions_imported", 0)
+        reconciled_count = tx_stats.get("reconciled_transactions", 0)
+        purged_count = tx_stats.get("duplicates_purged", 0)
+
+        msg = f"{synced_count} compte(s) synchronisé(s)"
+        if new_tx_count > 0:
+            msg += f", {new_tx_count} nouvelle(s) transaction(s) importée(s)"
+        if reconciled_count > 0:
+            msg += f", {reconciled_count} transaction(s) réconciliée(s)"
+        if purged_count > 0:
+            msg += f", {purged_count} doublon(s) purgé(s)"
+        msg += "."
 
         return {
             "success": True,
-            "message": f"{synced_count} compte(s) synchronisé(s) et {new_tx_count} nouvelle(s) transaction(s) importée(s) et catégorisée(s).",
+            "message": msg,
             "synced_accounts_count": synced_count,
             "total_balance_synced": round(total_balance_updated, 2),
             "new_transactions_imported": new_tx_count,
+            "reconciled_transactions": reconciled_count,
+            "duplicates_purged": purged_count,
             "updated_accounts": updated_list,
             "synced_at": datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M:%S"),
         }

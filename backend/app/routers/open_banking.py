@@ -166,6 +166,20 @@ async def sync_transactions(session: Session = Depends(get_session)):
         raise HTTPException(status_code=500, detail=f"Erreur de synchronisation des transactions : {e}")
 
 
+@router.post("/cleanup-duplicates")
+def cleanup_duplicates(session: Session = Depends(get_session)):
+    """Nettoie manuellement et immédiatement les doublons éventuels issus de la synchronisation DSP2."""
+    try:
+        cleaned = open_banking_service.cleanup_duplicate_transactions(session)
+        return {
+            "success": True,
+            "duplicates_removed": cleaned,
+            "message": f"{cleaned} doublon(s) de transaction nettoyé(s) avec succès." if cleaned > 0 else "Aucun doublon détecté sur vos comptes."
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors du nettoyage des doublons : {e}")
+
+
 # ────────────────────── Planification Automatique (Scheduler) ──────────────────────
 
 class SchedulerConfigRequest(BaseModel):

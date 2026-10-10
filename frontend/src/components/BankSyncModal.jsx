@@ -22,6 +22,7 @@ export default function BankSyncModal({
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [syncResult, setSyncResult] = useState(null);
+  const [cleaningDuplicates, setCleaningDuplicates] = useState(false);
 
   // Settings form Enable Banking
   const [simulationMode, setSimulationMode] = useState(true);
@@ -89,6 +90,22 @@ export default function BankSyncModal({
       setErrorMsg(err.message || "Erreur lors de la synchronisation");
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const handleCleanupDuplicates = async () => {
+    setCleaningDuplicates(true);
+    setErrorMsg('');
+    setSuccessMsg('');
+    try {
+      const res = await api.cleanupDuplicateTransactions();
+      setSuccessMsg(res.message || "Nettoyage des doublons terminé avec succès.");
+      await loadData();
+      if (onSyncSuccess) onSyncSuccess();
+    } catch (err) {
+      setErrorMsg(err.message || "Erreur lors du nettoyage des doublons");
+    } finally {
+      setCleaningDuplicates(false);
     }
   };
 
@@ -413,29 +430,53 @@ export default function BankSyncModal({
                       </p>
                     </div>
 
-                    <button
-                      onClick={handleSyncAll}
-                      disabled={syncing || connections.length === 0}
-                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold transition-all shadow-md shadow-blue-500/20 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
-                      <span>{syncing ? 'Synchronisation...' : 'Synchroniser tout'}</span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleCleanupDuplicates}
+                        disabled={cleaningDuplicates || connections.length === 0}
+                        title="Vérifie et purge les doublons éventuels de transactions bancaires DSP2"
+                        className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold border border-slate-700 transition-all flex items-center gap-1.5 disabled:opacity-50"
+                      >
+                        <ShieldCheck className={`w-3.5 h-3.5 ${cleaningDuplicates ? 'animate-spin' : 'text-emerald-400'}`} />
+                        <span>{cleaningDuplicates ? 'Purge...' : 'Anti-doublons'}</span>
+                      </button>
+
+                      <button
+                        onClick={handleSyncAll}
+                        disabled={syncing || connections.length === 0}
+                        className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold transition-all shadow-md shadow-blue-500/20 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
+                        <span>{syncing ? 'Synchronisation...' : 'Synchroniser tout'}</span>
+                      </button>
+                    </div>
                   </div>
 
                   {/* Résumé de dernière synchro */}
                   {syncResult && syncResult.updated_accounts && syncResult.updated_accounts.length > 0 && (
                     <div className="p-3.5 rounded-xl bg-slate-900/80 border border-emerald-500/30 text-xs space-y-2">
-                      <div className="font-semibold text-emerald-400 flex items-center justify-between">
+                      <div className="font-semibold text-emerald-400 flex items-center justify-between flex-wrap gap-1">
                         <span className="flex items-center gap-1.5">
                           <Check className="w-4 h-4" />
                           Mise à jour réussie :
                         </span>
-                        {syncResult.new_transactions_imported !== undefined && (
-                          <span className="px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 font-bold text-[11px]">
-                            +{syncResult.new_transactions_imported} transactions importées
-                          </span>
-                        )}
+                        <div className="flex items-center gap-1.5">
+                          {syncResult.reconciled_transactions > 0 && (
+                            <span className="px-2 py-0.5 rounded-lg bg-blue-500/20 text-blue-300 font-bold text-[11px]">
+                              {syncResult.reconciled_transactions} réconciliée(s)
+                            </span>
+                          )}
+                          {syncResult.duplicates_purged > 0 && (
+                            <span className="px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 font-bold text-[11px]">
+                              {syncResult.duplicates_purged} doublon(s) purgé(s)
+                            </span>
+                          )}
+                          {syncResult.new_transactions_imported !== undefined && (
+                            <span className="px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 font-bold text-[11px]">
+                              +{syncResult.new_transactions_imported} transactions
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
                         {syncResult.updated_accounts.map((acc, idx) => (

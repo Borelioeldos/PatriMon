@@ -3,7 +3,7 @@ import {
   History, Plus, Trash2, ShoppingCart, TrendingDown, 
   ArrowDownLeft, ArrowUpRight, DollarSign, RefreshCw,
   Tag, Search, Filter, X, ArrowDownRight, Layers,
-  CheckCircle2, Building2
+  CheckCircle2, Building2, ShieldCheck
 } from 'lucide-react';
 import { api } from '../services/api';
 import { formatEUR } from '../utils/format';
@@ -32,6 +32,7 @@ export default function TransactionsList({
   const [categories, setCategories] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isCleaningDuplicates, setIsCleaningDuplicates] = useState(false);
   const [filterType, setFilterType] = useState('');
   const [filterAccount, setFilterAccount] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
@@ -78,6 +79,20 @@ export default function TransactionsList({
       alert("Erreur de synchronisation : " + err.message);
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const handleCleanupDuplicates = async () => {
+    setIsCleaningDuplicates(true);
+    try {
+      const res = await api.cleanupDuplicateTransactions();
+      await fetchTransactions();
+      if (onTransactionDeleted) onTransactionDeleted();
+      alert(res.message || "Nettoyage des doublons terminé !");
+    } catch (err) {
+      alert("Erreur lors du nettoyage : " + err.message);
+    } finally {
+      setIsCleaningDuplicates(false);
     }
   };
 
@@ -185,6 +200,17 @@ export default function TransactionsList({
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
+            {/* Bouton Anti-doublons */}
+            <button
+              onClick={handleCleanupDuplicates}
+              disabled={isCleaningDuplicates || isSyncing}
+              className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 dark:bg-white/[0.04] dark:hover:bg-white/[0.08] text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white text-xs font-semibold border border-slate-200 dark:border-white/[0.08] transition-all btn-haptic flex items-center gap-1.5 disabled:opacity-50 shadow-sm"
+              title="Vérifier et purger immédiatement les doublons éventuels d'opérations bancaires DSP2"
+            >
+              <ShieldCheck className={`w-3.5 h-3.5 ${isCleaningDuplicates ? 'animate-spin text-emerald-500' : 'text-emerald-500'}`} />
+              <span>Anti-doublons</span>
+            </button>
+
             {/* Bouton Synchro Directe */}
             <button
               onClick={handleQuickSync}
